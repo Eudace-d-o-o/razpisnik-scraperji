@@ -61,6 +61,12 @@ Actor.main(async () => {
         async requestHandler({ request, $, log }) {
             const meta = CILJNE_STRANI.find(s => s.url === request.url) || {};
             const naslov = ($('h1').first().text().trim()) || meta.naziv || 'Neznan naziv';
+            // POMEMBNO: $('body').text() brez odstranitve <script>/<style> vključi vgrajene
+            // ASP.NET globalizacijske JS bloke (__doPostBack, __cultureInfo...), ki so na vrhu
+            // telesa na VSAKI Borzen strani — substring(0, 4000) je zato prej odrezal samo ta
+            // identičen skript, še preden je prišel do dejanske vsebine strani (isti bug kot
+            // je bil razlog, da je bila 'Vsebina' enaka na vseh razpisih ne glede na URL).
+            $('script, style, noscript').remove();
             const besedilo = $('body').text().replace(/\s+/g, ' ').trim().substring(0, 4000);
 
             const item = {
