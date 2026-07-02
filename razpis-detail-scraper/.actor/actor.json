@@ -1,0 +1,7 @@
+{
+    "actorSpecification": 1,
+    "name": "razpis-detail-scraper",
+    "title": "Razpis Detail Scraper",
+    "description": "Scrapa podrobnosti posameznega razpisa za generiranje povzetka.",
+    "version": "0.1"
+}

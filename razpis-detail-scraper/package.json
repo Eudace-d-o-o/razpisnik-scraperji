@@ -1,0 +1,14 @@
+{
+    "name": "razpis-detail-scraper",
+    "version": "0.4.0",
+    "type": "module",
+    "scripts": { "start": "node src/main.js" },
+    "dependencies": {
+        "apify": "^3.2.6",
+        "crawlee": "^3.10.0",
+        "pdf-parse": "^2.4.5",
+        "mammoth": "^1.9.1",
+        "cheerio": "^1.0.0"
+    },
+    "engines": { "node": ">=18" }
+}
