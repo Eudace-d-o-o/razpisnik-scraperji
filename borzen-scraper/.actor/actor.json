@@ -1,0 +1,9 @@
+{
+  "actorSpecification": 1,
+  "name": "borzen-scraper",
+  "title": "Borzen scraper (pravne osebe)",
+  "description": "Scrapa javne pozive/subvencije na borzen.si, ki so namenjeni pravnim osebam (podjetjem) — izloci sheme za fizicne osebe.",
+  "version": "1.0",
+  "input": "./input_schema.json",
+  "dockerfile": "../Dockerfile"
+}
