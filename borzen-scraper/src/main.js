@@ -20,6 +20,7 @@ const CILJNE_STRANI = [
     { url: 'https://borzen.si/sl-si/podpore-za-mobilnost/subvencije-za-polnilno-infrastrukturo-izven-omrezja-ten-t', naziv: 'Subvencije za polnilno infrastrukturo izven omrežja TEN-T' },
     { url: 'https://borzen.si/sl-si/podpore-za-mobilnost/subvencije-za-tovorni-promet/javni-razpis-zelena-tovorna-logistika', naziv: 'Javni razpis — Zelena tovorna logistika' },
     { url: 'https://borzen.si/sl-si/podpore-za-mobilnost/subvencije-za-tovorni-promet/subvencije-za-okolju-prijaznejse-prevoznistvo-2026', naziv: 'Subvencije za okolju prijaznejše prevozništvo 2026' },
+    { url: 'https://borzen.si/sl-si/podpore-za-mobilnost/subvencije-za-okolju-prijaznejse-avtobuse', naziv: 'Subvencije za okolju prijaznejše avtobuse' },
 ];
 
 // Ključne besede za grobo oceno statusa iz besedila strani (Borzen nima enotnega
