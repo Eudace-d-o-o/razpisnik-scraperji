@@ -1,0 +1,8 @@
+{
+    "actorSpecification": 1,
+    "name": "sps-scraper",
+    "title": "SPS Scraper",
+    "description": "Pridobiva seznam razpisov in pozivov s podjetniskisklad.si prek dinamičnega AJAX endpointa (popravljena verzija — stara verzija je scrapala statično stran, ki ne vsebuje dejanske tabele razpisov).",
+    "version": "0.2",
+    "buildTag": "latest"
+}
