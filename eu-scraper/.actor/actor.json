@@ -1,0 +1,8 @@
+{
+    "actorSpecification": 1,
+    "name": "eu-razpisi-scraper",
+    "title": "EU Razpisi Scraper",
+    "description": "Scrapa odprte in napovedane razpise z EU Funding & Tenders Portal.",
+    "version": "0.2",
+    "buildTag": "latest"
+}

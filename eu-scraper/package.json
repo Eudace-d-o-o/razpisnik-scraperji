@@ -1,0 +1,17 @@
+{
+    "name": "eu-razpisi-actor",
+    "version": "0.2.0",
+    "type": "module",
+    "description": "EU Funding & Tenders Portal scraper",
+    "main": "src/main.js",
+    "scripts": {
+        "start": "node src/main.js"
+    },
+    "dependencies": {
+        "apify": "^3.2.6",
+        "crawlee": "^3.10.0"
+    },
+    "engines": {
+        "node": ">=18"
+    }
+}

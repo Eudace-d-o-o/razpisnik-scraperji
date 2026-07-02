@@ -1,0 +1,21 @@
+{
+    "title": "EU Razpisi Input",
+    "type": "object",
+    "schemaVersion": 1,
+    "properties": {
+        "maxResults": {
+            "title": "Maksimalno število razpisov",
+            "type": "integer",
+            "description": "Največ razpisov za scraping (0 = vse)",
+            "editor": "number",
+            "default": 200
+        },
+        "stateKeyName": {
+            "title": "State key",
+            "type": "string",
+            "description": "Ključ v Key-Value Store za shranjevanje stanja",
+            "editor": "textfield",
+            "default": "EU_RAZPISI_STATE"
+        }
+    }
+}
