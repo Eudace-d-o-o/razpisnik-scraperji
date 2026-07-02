@@ -62,12 +62,14 @@ Actor.main(async () => {
         async requestHandler({ request, $, log }) {
             const meta = CILJNE_STRANI.find(s => s.url === request.url) || {};
             const naslov = ($('h1').first().text().trim()) || meta.naziv || 'Neznan naziv';
-            // POMEMBNO: $('body').text() brez odstranitve <script>/<style> vključi vgrajene
-            // ASP.NET globalizacijske JS bloke (__doPostBack, __cultureInfo...), ki so na vrhu
-            // telesa na VSAKI Borzen strani — substring(0, 4000) je zato prej odrezal samo ta
-            // identičen skript, še preden je prišel do dejanske vsebine strani (isti bug kot
-            // je bil razlog, da je bila 'Vsebina' enaka na vseh razpisih ne glede na URL).
-            $('script, style, noscript').remove();
+            // POMEMBNO: $('body').text() brez čiščenja vključi (1) vgrajene ASP.NET
+            // globalizacijske JS bloke in (2) glavno navigacijo + accessibility orodno vrstico
+            // ("Velikost pisave", celoten meni vseh Borzen podstrani...) — oboje je IDENTIČNO
+            // na VSAKI strani in se pojavi PRED dejansko vsebino, zato je substring(0, 4000)
+            // prej odrezal samo ta ponavljajoč se del, še preden je prišel do dejanske vsebine
+            // razpisa (to je bil razlog, da je bila 'Vsebina' enaka na vseh razpisih ne glede
+            // na URL — dvoplasten bug, script/style odstranitev sama ni bila dovolj).
+            $('script, style, noscript, nav, header, footer, aside, .accessibility, [class*="accessib"], [id*="accessib"]').remove();
             const besedilo = $('body').text().replace(/\s+/g, ' ').trim().substring(0, 4000);
 
             const item = {
