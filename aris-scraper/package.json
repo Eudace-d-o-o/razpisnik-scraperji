@@ -1,0 +1,14 @@
+{
+  "name": "aris-scraper",
+  "version": "0.1.1",
+  "type": "module",
+  "description": "ARIS javni razpisi scraper",
+  "main": "src/main.js",
+  "scripts": {
+    "start": "node src/main.js"
+  },
+  "dependencies": {
+    "apify": "^3.2.2",
+    "crawlee": "^3.9.0"
+  }
+}

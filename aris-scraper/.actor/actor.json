@@ -1,0 +1,10 @@
+{
+  "actorSpecification": 1,
+  "name": "aris-scraper",
+  "title": "ARIS Razpisi Scraper",
+  "description": "Scrapa javne razpise in pozive ARIS za leto 2026",
+  "version": "0.1",
+  "buildTag": "latest",
+  "environmentVariables": {},
+  "dockerfile": "../Dockerfile"
+}
