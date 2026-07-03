@@ -250,26 +250,14 @@ if (!rezultat) {
                 }
             }
 
-            // ARIS razpisi imajo natančne datume (rok za oddajo, faze postopka) na LOČENI podstrani
-            // "Rokovnik" (?Rokovnik=Da), ki ni del glavne strani razpisa. Brez tega koraka scraper
-            // nikoli ne zazna konkretnega roka za oddajo vlog, ker ga glavno besedilo ne vsebuje.
+            // OPOMBA (2026-07-03): "?Rokovnik=Da" je bil poseben query parameter STARE ARIS
+            // strani (ukinjena poleti 2026, glej aris-scraper main.js) — na NOVI strani ta
+            // parameter ne obstaja, zato je fetch vračal generično/napačno vsebino (potrjeno:
+            // vseboval je surov <script> Google Maps loader, ne datume) prek $$('body').text()
+            // brez čiščenja — isti razred bug-a kot je bil pri borzen-scraperju. Ker nova
+            // ".razpisDetail-content" ekstrakcija (glej zgoraj) že zajame "Rok:"/"Datum objave:"
+            // če je na strani, ta posebna ARIS Rokovnik-logika ni več potrebna — onemogočena.
             let rokovnikVsebina = '';
-            if (vir === 'ARIS' || request.url.includes('aris-rs')) {
-                try {
-                    const rokovnikUrl = request.url.includes('?')
-                        ? request.url + '&Rokovnik=Da'
-                        : request.url + '?Rokovnik=Da';
-                    const rr = await fetch(rokovnikUrl, { headers: { 'User-Agent': 'Mozilla/5.0' } });
-                    if (rr.ok) {
-                        const rokovnikHtml = await rr.text();
-                        const $$ = cheerio.load(rokovnikHtml);
-                        rokovnikVsebina = $$('body').text().replace(/\s+/g, ' ').trim();
-                        log.info(`[Detail] Rokovnik podstran prebrana: ${rokovnikVsebina.length} znakov`);
-                    }
-                } catch (e) {
-                    log.warning(`[Detail] Rokovnik podstran ni dosegljiva: ${e.message}`);
-                }
-            }
 
             // Združi dokument (PDF/Word) + rokovnik + HTML vsebino. Razpisni dokumenti so lahko
             // obsežni (100+ strani) — ne režemo na vsiljen kratek limit, pošljemo Claude-u polno
