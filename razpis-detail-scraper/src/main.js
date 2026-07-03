@@ -20,6 +20,11 @@ await Actor.init();
 const input = await Actor.getInput();
 const url = input?.url;
 const vir = input?.vir || 'SPS';
+// Hitri način "samo spletna stran" — brez prenosa/branja PDF/Word dokumentov. Uporablja
+// ga portal za ciljano dopolnjevanje manjkajočih polj (npr. rok oddaje), ko je uporabnik
+// že ročno naložil razpisno dokumentacijo in dodatno branje istih/drugih dokumentov ni
+// potrebno — samo pospeši scraping in zmanjša količino besedila poslanega Claude-u.
+const preskociPdf = !!input?.preskociPdf;
 
 if (!url) {
     log.error('Manjka URL v inputu');
@@ -185,21 +190,25 @@ if (!rezultat) {
 
             vsebina = vsebina.replace(/\s+/g, ' ').trim();
 
-            const dokLinki = najdiDokumentLinke($, request.url);
-            log.info(`[Detail] Najdenih dokumentnih linkov (PDF/Word): ${dokLinki.length}`);
             let dokVsebina = '';
             const dokViri = [];
-            for (const l of dokLinki) {
-                const txt = await prebrDokument(l.url);
-                if (txt && txt.length > 50) {
-                    const cisto = txt.replace(/\s+/g, ' ').trim();
-                    // Razpisni dokumenti so lahko obsežni (100+ strani) — beremo CELOTNO vsebino,
-                    // ne omejujemo z znakovnim limitom tukaj. Claude ima dovolj velik context window
-                    // da prebere celoten dokument in temeljito poišče zahtevane podatke (zneski,
-                    // pogoji, roki...), namesto da zanesljive podatke izgubimo z vnaprejšnjim rezanjem.
-                    dokVsebina += `\n\n=== DOKUMENT: ${l.tekst || l.url} ===\n${cisto}`;
-                    dokViri.push(l.url);
+            if (!preskociPdf) {
+                const dokLinki = najdiDokumentLinke($, request.url);
+                log.info(`[Detail] Najdenih dokumentnih linkov (PDF/Word): ${dokLinki.length}`);
+                for (const l of dokLinki) {
+                    const txt = await prebrDokument(l.url);
+                    if (txt && txt.length > 50) {
+                        const cisto = txt.replace(/\s+/g, ' ').trim();
+                        // Razpisni dokumenti so lahko obsežni (100+ strani) — beremo CELOTNO vsebino,
+                        // ne omejujemo z znakovnim limitom tukaj. Claude ima dovolj velik context window
+                        // da prebere celoten dokument in temeljito poišče zahtevane podatke (zneski,
+                        // pogoji, roki...), namesto da zanesljive podatke izgubimo z vnaprejšnjim rezanjem.
+                        dokVsebina += `\n\n=== DOKUMENT: ${l.tekst || l.url} ===\n${cisto}`;
+                        dokViri.push(l.url);
+                    }
                 }
+            } else {
+                log.info('[Detail] preskociPdf=true — dokumenti se ne berejo (samo HTML vsebina strani).');
             }
 
             const t = vsebina.toLowerCase();
