@@ -165,14 +165,16 @@ if (!rezultat) {
             if (vir === 'SPS' || url.includes('podjetniskisklad')) {
                 vsebina = $('.entry-content, .post-content, article .fusion-post-content').first().text().trim();
             } else if (vir === 'ARIS' || url.includes('aris-rs')) {
-                // ARIS je poleti 2026 preuredil stran (glej aris-scraper main.js) — dejanska
-                // vsebina razpisa je zdaj v "<section id="content" class="content">" (potrjeno
-                // 2026-07-03), NE raztresena po celem <body>. Prej uporabljen $('body').text() +
-                // iskanje besede "objavlja" je na novi strani vračal CELOTNO stran vključno z
-                // navigacijo/menijem (200.000+ znakov) — to je preseglo Claude context okno in
-                // povzročalo napake pri generiranju povzetka. Ohranimo "objavlja" fallback SAMO
-                // če ciljni selektor ne obstaja (odpornost na morebitno prihodnjo spremembo).
-                const $vsebinskiBlok = $('section#content.content, #content.content').first();
+                // ARIS je poleti 2026 preuredil stran (glej aris-scraper main.js). Prvi poskus
+                // (2026-07-03) je ciljal "#content.content" — a ta blok vsebuje TUDI stransko
+                // vrstico (<aside class="col-lg-4"> s poljubnimi povezanimi razpisi/"razpisi-
+                // related" widgetom), zato je vsebina še vedno bila ~165.000 znakov (potrjeno
+                // testom istega dne — ostal je zgolj drugačen šum, ne dejanske vsebine razpisa).
+                // Pravi kontejner SAMO glavnega besedila (brez stranske vrstice) je
+                // ".razpisDetail-content" (potrjeno v surovem HTML-ju iste strani). Ohranimo
+                // "objavlja" fallback SAMO če ciljni selektor ne obstaja (odpornost na
+                // morebitno prihodnjo spremembo strani).
+                const $vsebinskiBlok = $('.razpisDetail-content').first();
                 if ($vsebinskiBlok.length) {
                     vsebina = $vsebinskiBlok.text();
                 } else {
