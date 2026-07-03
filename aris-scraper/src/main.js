@@ -1,212 +1,148 @@
 /**
  * ARIS Scraper — javni razpisi in pozivi ARIS
- * Faza 1: Scrapa tabelo razpisov (seznam)
- * Faza 2: Za vsak razpis z URL-jem obišče stran in pobere vsebino
+ *
+ * ARIS je poleti 2026 preuredil spletno stran: stari URL-ji
+ * (pregled-razpisov-26.asp ipd.) ne obstajajo več, seznam razpisov je zdaj na dveh
+ * ločenih straneh:
+ *   - Odprti:     https://www.aris-rs.si/objave/razpisi/odprti
+ *   - Načrtovani: https://www.aris-rs.si/objave/nacrtovani-razpisi  (Datum objave = PREDVIDEN,
+ *                 se lahko spremeni)
+ *
+ * Seznam je JS-driven (paginacija prek gumba "Naslednja stran" — data-aris-page-next —
+ * ne preprost ?page= parameter, poskušeno in potrjeno 2026-07-03), zato uporabljamo
+ * PlaywrightCrawler namesto CheerioCrawler: naložimo stran, preberemo trenutne kartice,
+ * kliknemo "naprej" in ponovimo za vse strani (data-page-count na [data-aris-listing]).
+ *
+ * Vsebina posameznega razpisa (pogoji, sektor, rokovnik) ostaja domena
+ * razpis-detail-scraper (kliče se ločeno, ob generiranju povzetka) — ta scraper samo
+ * pobere seznamsko kartico (naziv, URL, status, rok/datum objave, vrednost).
  */
 
-import { Actor, KeyValueStore } from 'apify';
-import { CheerioCrawler } from 'crawlee';
+import { Actor, log } from 'apify';
+import { PlaywrightCrawler } from 'crawlee';
+import * as cheerio from 'cheerio';
 
-const STATE_KEY = 'ARIS_RAZPISI';
-const STORE_NAME = 'aris-state';
+const STRANI = [
+    { url: 'https://www.aris-rs.si/objave/razpisi/odprti', tip: 'odprt' },
+    { url: 'https://www.aris-rs.si/objave/nacrtovani-razpisi', tip: 'nacrtovan' },
+];
 
 function danes() {
-    const d = new Date();
-    return `${String(d.getDate()).padStart(2,'0')}.${String(d.getMonth()+1).padStart(2,'0')}.${d.getFullYear()}`;
+    return new Date().toISOString().substring(0, 10);
 }
 
-function slugify(str) {
-    return str.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '').substring(0, 80);
+// "24. 7. 2026 (14:00)" ali "1. 9. 2026" → "24.07.2026" (zero-padded, brez ure —
+// razpisi.js normalizirajDatumZaZapis/rok_oddaje pričakuje "DD.MM.YYYY").
+function normalizirajDatum(besedilo) {
+    if (!besedilo) return null;
+    const m = besedilo.match(/(\d{1,2})\.\s*(\d{1,2})\.\s*(\d{4})/);
+    if (!m) return null;
+    return `${m[1].padStart(2, '0')}.${m[2].padStart(2, '0')}.${m[3]}`;
 }
 
-function cisti(txt) {
-    return (txt || '').replace(/\r?\n/g, ' ').replace(/\t/g, ' ').replace(/\s+/g, ' ').trim();
-}
+// Razčleni HTML fragment strani v kartice razpisov (glej dejansko markup na
+// aris-rs.si — potrjeno 2026-07-03: .razpis-card--kartica, header .tags[1] .tag = status,
+// h4 a = naziv+URL, footer <p><span>Rok:/Datum objave:/Razpisana vrednost:</span><strong>...).
+function razcleniKartice(html, tip) {
+    const $ = cheerio.load(html);
+    const rezultati = [];
 
-// Počisti Windows-1250 encoding artefakte
-function cistiEncoding(txt) {
-    return (txt || '')
-        .replace(/�/g, '')  // replacement chars
-        .replace(/[\x80-\x9F]/g, '') // kontrolni znaki
-        .replace(/\s+/g, ' ')
-        .trim();
-}
+    $('.razpis-card--kartica').each((_, el) => {
+        const $card = $(el);
+        const $a = $card.find('h4 a').first();
+        const naziv = $a.text().replace(/\s+/g, ' ').trim();
+        const href = $a.attr('href');
+        if (!naziv || !href) return;
+        const url = href.startsWith('http') ? href : `https://www.aris-rs.si${href}`;
 
-function normalizirajStatus(s) {
-    if (!s) return 'Ni razvidno';
-    const l = s.toLowerCase();
-    if (l.includes('v teku') || l.includes('odprt')) return 'Odprt';
-    if (l.includes('zaklju') || l.includes('zaprt')) return 'Zaprt';
-    if (l.includes('na') && (l.includes('rtovan') || l.includes('načrtovan'))) return 'Načrtovan';
-    if (l.includes('objava sledi')) return 'Načrtovan';
-    if (l.includes('rezultat') || l.includes('delni')) return 'Zaključen';
-    return s.substring(0, 30);
-}
+        // Status tag je DRUGI ".tags" blok v headerju (prvi je kategorija) — "ODPRT"/"NAČRTOVAN".
+        const statusTag = $card.find('header .tags').eq(1).find('.tag').first().text().trim();
+        const status = /odprt/i.test(statusTag) ? 'Odprt' : /na.rtovan/i.test(statusTag) ? 'Načrtovan' : (tip === 'odprt' ? 'Odprt' : 'Načrtovan');
 
-// Izvleče vsebino razpisne strani
-function izvlecVsebino($) {
-    // Poskusi različne selektorje za vsebino
-    let vsebina = '';
+        let rokPrijave = null, datumObjave = null, vrednost = null;
+        $card.find('.razpisi-kartica__meta p').each((_, p) => {
+            const label = $(p).find('span').first().text().trim();
+            const vrednostBesedilo = $(p).find('strong').first().text().trim();
+            if (/^Rok:?$/i.test(label)) rokPrijave = normalizirajDatum(vrednostBesedilo);
+            else if (/^Datum objave:?$/i.test(label)) datumObjave = normalizirajDatum(vrednostBesedilo);
+            else if (/^Razpisana vrednost:?$/i.test(label)) vrednost = vrednostBesedilo;
+        });
 
-    // Glavni content div
-    const contentSelectors = [
-        '.content-main', '#content', '.main-content',
-        'td.vsebina', '.vsebina', '[class*="content"]',
-        'table.razpis', '.razpis-vsebina'
-    ];
+        rezultati.push({
+            'Naziv razpisa': naziv,
+            'URL': url,
+            'Status': status,
+            'Rok prijave': rokPrijave,
+            'Datum objave': datumObjave,
+            'Vrednost (EUR)': vrednost,
+            'Datum zaznave': danes(),
+        });
+    });
 
-    for (const sel of contentSelectors) {
-        const el = $(sel);
-        if (el.length && el.text().trim().length > 200) {
-            vsebina = cisti(el.text());
-            break;
-        }
-    }
-
-    // Fallback: vzemi vso besedilo iz body brez navigacije
-    if (!vsebina || vsebina.length < 100) {
-        // Odstrani navigacijo, noge, glavo
-        $('nav, header, footer, .nav, .menu, .footer, .header, script, style').remove();
-        vsebina = cisti($('body').text());
-    }
-
-    // Omeji dolžino
-    return vsebina.substring(0, 5000);
+    return rezultati;
 }
 
 await Actor.init();
 
-const store = await KeyValueStore.open(STORE_NAME);
-const obstojeceStanje = (await store.getValue(STATE_KEY)) ?? {};
-const novoStanje = { ...obstojeceStanje };
-const najdeniRazpisi = [];
+const vsiRezultati = [];
+const videniUrl = new Set();
 
-// ── FAZA 1: Scrapa tabelo razpisov ──────────────────────────────────────────
-console.log('[ARIS] Faza 1: Scraping tabel razpisov...');
+const crawler = new PlaywrightCrawler({
+    requestHandlerTimeoutSecs: 120,
+    maxRequestsPerCrawl: STRANI.length,
+    async requestHandler({ page, request }) {
+        const tip = request.userData.tip;
+        log.info(`[ARIS] Nalagam: ${request.url} (${tip})`);
 
-const tabelaCrawler = new CheerioCrawler({
-    requestHandlerTimeoutSecs: 60,
-    maxRequestRetries: 3,
-    requestHandler: async ({ $, request }) => {
-        const leto = request.userData?.leto || '2026';
-        let najdenih = 0;
+        await page.waitForSelector('.razpis-card--kartica', { timeout: 30000 }).catch(() => {
+            log.warning(`[ARIS] Ni najdenih kartic na ${request.url} (mogoče spremenjena stran?)`);
+        });
 
-        $('table tr').each((_, row) => {
-            const cells = $(row).find('td');
-            if (cells.length < 3) return;
+        const pageCountAttr = await page.getAttribute('[data-aris-listing]', 'data-page-count').catch(() => null);
+        const steviloStrani = Math.max(1, parseInt(pageCountAttr, 10) || 1);
+        log.info(`[ARIS] ${tip}: zaznanih ${steviloStrani} strani rezultatov`);
 
-            const zapSt = cisti($(cells[0]).text());
-            if (!zapSt || isNaN(parseInt(zapSt))) return;
+        for (let stran = 1; stran <= steviloStrani; stran++) {
+            const html = await page.content();
+            const kartice = razcleniKartice(html, tip);
 
-            const datumObjave = cisti($(cells[1]).text());
-            const nazivCell   = $(cells[2]);
-
-            let naziv = cisti(nazivCell.text())
-                .replace(/Sprememba\s+(Javnega|Pilotnega|javnega|pilotnega)[^(]*/g, '')
-                .replace(/\s+/g, ' ').trim();
-
-            if (!naziv || naziv.length < 5) return;
-
-            const status     = normalizirajStatus(cells.length > 3 ? cisti($(cells[3]).text()) : '');
-            const rokPrijave = cells.length > 4 ? cisti($(cells[4]).text()) : '';
-            const datumRez   = cells.length > 5 ? cisti($(cells[5]).text()) : '';
-            const vrednost   = cells.length > 6 ? cisti($(cells[6]).text()) : '';
-            const sektor     = cells.length > 7 ? cisti($(cells[7]).text()) : '';
-
-            let url = '';
-            const href = nazivCell.find('a[href]').first().attr('href') || '';
-            if (href) {
-                try {
-                    url = new URL(href, request.url).href;
-                } catch {
-                    url = href.startsWith('http') ? href
-                        : href.startsWith('/') ? `https://www.aris-rs.si${href}`
-                        : `https://www.aris-rs.si/sl/razpisi/${leto}/${href}`;
+            let novih = 0;
+            for (const k of kartice) {
+                if (!videniUrl.has(k['URL'])) {
+                    videniUrl.add(k['URL']);
+                    vsiRezultati.push(k);
+                    novih++;
                 }
             }
-            if (!url) {
-                url = `${request.url}#${parseInt(zapSt)}`;
+            log.info(`[ARIS] ${tip} stran ${stran}/${steviloStrani}: ${kartice.length} kartic, ${novih} novih`);
+
+            if (stran < steviloStrani) {
+                const prvaPovezavaPred = kartice[0]?.['URL'];
+                const gumb = await page.$('[data-aris-page-next]');
+                if (!gumb) { log.warning(`[ARIS] Gumb "Naslednja stran" ni najden — ustavljam pri strani ${stran}`); break; }
+                await gumb.click();
+                // Počakaj da se prva kartica dejansko spremeni (potrdi da je nova stran naložena),
+                // varnostna omejitev 15s (na voljo pade nazaj na trenutno stanje, ne ustavi actorja).
+                await page.waitForFunction(
+                    (prejsnjaPovezava) => {
+                        const prva = document.querySelector('.razpis-card--kartica h4 a');
+                        return prva && prva.getAttribute('href') !== prejsnjaPovezava;
+                    },
+                    prvaPovezavaPred?.replace('https://www.aris-rs.si', ''),
+                    { timeout: 15000 }
+                ).catch(() => log.warning(`[ARIS] Stran ${stran + 1} se morda ni pravilno naložila (timeout čakanja na spremembo)`));
+                await page.waitForTimeout(400);
             }
-
-            const key = `aris-${leto}-${parseInt(zapSt)}-${slugify(naziv).substring(0, 40)}`;
-            const datumZaznave = obstojeceStanje[key]?.datumZaznave || danes();
-            const obstojecaVsebina = obstojeceStanje[key]?.vsebina || '';
-
-            novoStanje[key] = {
-                key, naziv, url, vir: 'ARIS', leto, status,
-                datumObjave, rokPrijave, datumRez, vrednost, sektor,
-                datumZaznave, zadnjaPosodobitev: danes(),
-                vsebina: obstojecaVsebina, // ohrani obstoječo vsebino
-                imaUrl: !url.includes('#'), // označimo razpise z dejanskim URL-jem
-            };
-            najdeniRazpisi.push(novoStanje[key]);
-            najdenih++;
-        });
-        console.log(`[ARIS] Leto ${leto}: ${najdenih} razpisov najdenih`);
+        }
+    },
+    failedRequestHandler({ request }) {
+        log.error(`[ARIS] Ni uspelo naložiti: ${request.url}`);
     },
 });
 
-await tabelaCrawler.run([
-    { url: 'https://www.aris-rs.si/sl/razpisi/26/pregled-razpisov-26.asp', userData: { leto: '2026' } },
-    { url: 'https://www.aris-rs.si/sl/razpisi/25/pregled-razpisov-25.asp', userData: { leto: '2025' } },
-]);
+await crawler.run(STRANI.map(s => ({ url: s.url, userData: { tip: s.tip } })));
 
-// ── FAZA 2: Poberi vsebino za razpise z dejanskim URL-jem ───────────────────
-console.log('[ARIS] Faza 2: Scraping vsebine posameznih razpisov...');
+log.info(`[ARIS] Skupaj zaznanih razpisov: ${vsiRezultati.length}`);
+if (vsiRezultati.length) await Actor.pushData(vsiRezultati);
 
-// Razpisi ki imajo dejanski URL (ne #anchor) in nimajo vsebine
-const zaFetch = najdeniRazpisi.filter(r => r.imaUrl && !r.vsebina);
-console.log(`[ARIS] Razpisov za fetch vsebine: ${zaFetch.length}`);
-
-if (zaFetch.length > 0) {
-    const vsebinaCrawler = new CheerioCrawler({
-        requestHandlerTimeoutSecs: 60,
-        maxRequestRetries: 2,
-        maxConcurrency: 3,
-        requestHandler: async ({ $, request }) => {
-            const key = request.userData?.key;
-            if (!key || !novoStanje[key]) return;
-
-            const vsebina = izvlecVsebino($);
-            if (vsebina && vsebina.length > 100) {
-                novoStanje[key].vsebina = cistiEncoding(vsebina);
-                console.log(`[ARIS] Vsebina: ${key.substring(0,50)} (${vsebina.length} znakov)`);
-            }
-        },
-        failedRequestHandler: async ({ request }) => {
-            console.log(`[ARIS] Napaka pri fetchanju: ${request.url}`);
-        },
-    });
-
-    const requests = zaFetch.map(r => ({
-        url: r.url,
-        userData: { key: r.key },
-    }));
-
-    await vsebinaCrawler.run(requests);
-}
-
-// ── SHRANI ───────────────────────────────────────────────────────────────────
-await store.setValue(STATE_KEY, novoStanje);
-
-const dataset = await Actor.openDataset();
-for (const r of najdeniRazpisi) {
-    await dataset.pushData({
-        'Naziv razpisa':      r.naziv,
-        'URL':                r.url,
-        'Vir':                'ARIS',
-        'Status':             r.status,
-        'Datum objave':       r.datumObjave,
-        'Rok prijave':        r.rokPrijave,
-        'Datum rezultatov':   r.datumRez,
-        'Vrednost (EUR)':     r.vrednost,
-        'Sektor':             r.sektor,
-        'Leto':               r.leto,
-        'Datum zaznave':      r.datumZaznave,
-        'Zadnja posodobitev': r.zadnjaPosodobitev,
-        'Vsebina':            r.vsebina || '',
-    });
-}
-
-console.log(`[ARIS] Skupaj: ${najdeniRazpisi.length} | Novih: ${najdeniRazpisi.filter(r=>!obstojeceStanje[r.key]).length}`);
 await Actor.exit();
