@@ -98,6 +98,16 @@ const crawler = new PlaywrightCrawler({
             log.warning(`[ARIS] Ni najdenih kartic na ${request.url} (mogoče spremenjena stran?)`);
         });
 
+        // Piškotni modal (#cookie-modal) je ob prvem obisku VEDNO odprt in prekriva celo
+        // stran (intercepts pointer events) — brez zapiranja klik na "Naslednja stran" vedno
+        // odpove s timeoutom (ugotovljeno 2026-07-03, glej log). "Izberi vse in zapri" je
+        // edini gumb, ki modal dejansko zapre (ne le skrije enega taba nastavitev).
+        const cookieGumb = await page.$('#cookieCommitAll');
+        if (cookieGumb) {
+            await cookieGumb.click().catch(() => {});
+            await page.waitForSelector('#cookie-modal', { state: 'hidden', timeout: 5000 }).catch(() => {});
+        }
+
         const pageCountAttr = await page.getAttribute('[data-aris-listing]', 'data-page-count').catch(() => null);
         const steviloStrani = Math.max(1, parseInt(pageCountAttr, 10) || 1);
         log.info(`[ARIS] ${tip}: zaznanih ${steviloStrani} strani rezultatov`);
