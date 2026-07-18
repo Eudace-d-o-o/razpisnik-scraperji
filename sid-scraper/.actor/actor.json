@@ -1,0 +1,9 @@
+{
+  "actorSpecification": 1,
+  "name": "sid-scraper",
+  "title": "SID banka scraper",
+  "description": "Scraper finančnih instrumentov SID banke (krediti/posojila za podjetja)",
+  "version": "1.0",
+  "input": "./input_schema.json",
+  "dockerfile": "../Dockerfile"
+}
