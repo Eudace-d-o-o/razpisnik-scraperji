@@ -23,8 +23,13 @@ const API = 'https://ekohezija.gov.hr/MISPublicApi/poziv/browse/?status=Otvoren&
 const SEZNAM = 'https://eu-pozivi.eufondovi.gov.hr/calls/';
 
 // gov strani včasih ne postrežejo popolne verige certifikatov -> preverjanje izklopimo SAMO za ta
-// fetch (dispatcher velja lokalno, ne globalno).
-const tlsAgent = new Agent({ connect: { rejectUnauthorized: false } });
+// fetch (dispatcher velja lokalno, ne globalno). Daljši connect timeout (ekohezija je počasen iz
+// tujih/DC omrežij — privzetih 10s ni dovolj).
+const tlsAgent = new Agent({
+    connect: { rejectUnauthorized: false, timeout: 30000 },
+    headersTimeout: 60000,
+    bodyTimeout: 60000,
+});
 
 // ISO "2026-11-30T16:00:00Z" -> "30.11.2026"
 function isoVDatum(v) {
@@ -46,7 +51,13 @@ function evr(v) {
 Actor.main(async () => {
     const r = await fetch(API, {
         dispatcher: tlsAgent,
-        headers: { Accept: 'application/json', 'User-Agent': 'Mozilla/5.0 (razpisnik-portal scraper)' },
+        headers: {
+            Accept: 'application/json',
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36',
+            // API je zaledje aplikacije eu-pozivi.eufondovi.gov.hr — pošljemo pričakovana headerja
+            Referer: 'https://eu-pozivi.eufondovi.gov.hr/',
+            Origin: 'https://eu-pozivi.eufondovi.gov.hr',
+        },
     });
     if (!r.ok) throw new Error(`HR eufondovi API HTTP ${r.status}`);
     const j = await r.json();
