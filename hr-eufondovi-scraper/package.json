@@ -1,0 +1,13 @@
+{
+  "name": "hr-eufondovi-scraper",
+  "version": "1.0.0",
+  "type": "commonjs",
+  "description": "Scraper odprtih EU pozivov/natječajev Hrvaške (eufondovi.gov.hr / MIS API) za razpisnik-portal",
+  "dependencies": {
+    "apify": "^3.2.6",
+    "undici": "^6.19.8"
+  },
+  "scripts": {
+    "start": "node src/main.js"
+  }
+}
