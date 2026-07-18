@@ -1,0 +1,9 @@
+{
+  "actorSpecification": 1,
+  "name": "ekosklad-scraper",
+  "title": "Eko sklad scraper",
+  "description": "Scraper odprtih javnih pozivov Eko sklad (gospodarstvo)",
+  "version": "1.0",
+  "input": "./input_schema.json",
+  "dockerfile": "../Dockerfile"
+}

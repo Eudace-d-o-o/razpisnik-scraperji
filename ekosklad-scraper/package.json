@@ -1,0 +1,13 @@
+{
+  "name": "ekosklad-scraper",
+  "version": "1.0.0",
+  "type": "commonjs",
+  "description": "Scraper odprtih javnih pozivov Eko sklad (gospodarstvo) za razpisnik-portal",
+  "dependencies": {
+    "apify": "^3.2.6",
+    "cheerio": "^1.0.0"
+  },
+  "scripts": {
+    "start": "node src/main.js"
+  }
+}
