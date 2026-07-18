@@ -9,7 +9,7 @@
  *   items[].title, .link (slug), .externalUrl, .status, .validity, .validTo (ISO), .publishDate, .subtitle, .deadline
  *
  * Izhod (pogodba polj za razpisi.js genericniMapper): Naziv razpisa, URL, Status, Rok prijave,
- * Datum zaznave, Vsebina, Vrednost (EUR).
+ * Datum zaznave, Vsebina.
  */
 const { Actor } = require('apify');
 
@@ -27,30 +27,29 @@ function danes() {
     return `${String(d.getDate()).padStart(2, '0')}.${String(d.getMonth() + 1).padStart(2, '0')}.${d.getFullYear()}`;
 }
 
-await Actor.init();
+// CommonJS actor -> ovij v Actor.main (top-level await ni dovoljen v CommonJS).
+Actor.main(async () => {
+    const r = await fetch(API, { headers: { Accept: 'application/json' } });
+    if (!r.ok) throw new Error(`SPIRIT API HTTP ${r.status}`);
+    const j = await r.json();
+    const items = (j && j.data && j.data.items) || [];
 
-const r = await fetch(API, { headers: { Accept: 'application/json' } });
-if (!r.ok) throw new Error(`SPIRIT API HTTP ${r.status}`);
-const j = await r.json();
-const items = (j && j.data && j.data.items) || [];
+    const rezultati = [];
+    for (const t of items) {
+        if (!t.title || !t.link) continue;
+        const url = (t.externalUrl && t.externalUrl.trim())
+            ? t.externalUrl.trim()
+            : `https://www.spiritslovenia.si/razpisi/${t.link}`;
+        rezultati.push({
+            'Naziv razpisa': String(t.title).trim(),
+            'URL': url,
+            'Status': 'Odprt', // API vračamo samo status=ACTIVE&validity=ACTIVE (odprti)
+            'Rok prijave': isoVSlo(t.validTo),
+            'Datum zaznave': danes(),
+            'Vsebina': [t.subtitle, t.deadline].filter(Boolean).join(' — ').substring(0, 2000),
+        });
+    }
 
-const rezultati = [];
-for (const t of items) {
-    if (!t.title || !t.link) continue;
-    const url = (t.externalUrl && t.externalUrl.trim())
-        ? t.externalUrl.trim()
-        : `https://www.spiritslovenia.si/razpisi/${t.link}`;
-    rezultati.push({
-        'Naziv razpisa': String(t.title).trim(),
-        'URL': url,
-        'Status': 'Odprt', // API vračamo samo status=ACTIVE&validity=ACTIVE (odprti)
-        'Rok prijave': isoVSlo(t.validTo),
-        'Datum zaznave': danes(),
-        'Vsebina': [t.subtitle, t.deadline].filter(Boolean).join(' — ').substring(0, 2000),
-    });
-}
-
-console.log(`[SPIRIT] zajetih ${rezultati.length} odprtih razpisov`);
-if (rezultati.length) await Actor.pushData(rezultati);
-
-await Actor.exit();
+    console.log(`[SPIRIT] zajetih ${rezultati.length} odprtih razpisov`);
+    if (rezultati.length) await Actor.pushData(rezultati);
+});
