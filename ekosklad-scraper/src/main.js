@@ -20,8 +20,14 @@
  */
 const { Actor } = require('apify');
 const cheerio = require('cheerio');
+const { Agent } = require('undici');
 
 const VIR = 'https://www.ekosklad.si/gospodarstvo/pridobite-spodbudo/objava';
+
+// ekosklad.si ne postreze popolne verige certifikatov (manjka vmesni cert) -> Node fetch
+// zavrne "unable to verify the first certificate". Preverjanje izklopimo SAMO za ta en fetch
+// (dispatcher velja lokalno, ne globalno), ker actor bere le to javno stran.
+const tlsAgent = new Agent({ connect: { rejectUnauthorized: false } });
 
 // "10. 06. 2026" (s presledki) -> "10.06.2026"
 function ociste(datum) {
@@ -36,7 +42,10 @@ function danes() {
 }
 
 Actor.main(async () => {
-    const r = await fetch(VIR, { headers: { Accept: 'text/html', 'User-Agent': 'Mozilla/5.0 (razpisnik-portal scraper)' } });
+    const r = await fetch(VIR, {
+        dispatcher: tlsAgent,
+        headers: { Accept: 'text/html', 'User-Agent': 'Mozilla/5.0 (razpisnik-portal scraper)' },
+    });
     if (!r.ok) throw new Error(`Eko sklad HTTP ${r.status}`);
     const html = await r.text();
     const $ = cheerio.load(html);

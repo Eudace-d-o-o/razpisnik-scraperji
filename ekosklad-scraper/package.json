@@ -5,7 +5,8 @@
   "description": "Scraper odprtih javnih pozivov Eko sklad (gospodarstvo) za razpisnik-portal",
   "dependencies": {
     "apify": "^3.2.6",
-    "cheerio": "^1.0.0"
+    "cheerio": "^1.0.0",
+    "undici": "^6.19.8"
   },
   "scripts": {
     "start": "node src/main.js"
