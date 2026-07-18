@@ -1,0 +1,9 @@
+{
+  "actorSpecification": 1,
+  "name": "hr-ruralnirazvoj-scraper",
+  "title": "Hrvaška ruralni razvoj scraper",
+  "description": "Scraper odprtih kmetijskih natječajev Hrvaške (ruralnirazvoj.hr)",
+  "version": "1.0",
+  "input": "./input_schema.json",
+  "dockerfile": "../Dockerfile"
+}

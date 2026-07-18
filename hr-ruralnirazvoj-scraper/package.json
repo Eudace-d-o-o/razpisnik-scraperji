@@ -1,0 +1,14 @@
+{
+  "name": "hr-ruralnirazvoj-scraper",
+  "version": "1.0.0",
+  "type": "commonjs",
+  "description": "Scraper odprtih kmetijskih natječajev Hrvaške (ruralnirazvoj.hr) za razpisnik-portal",
+  "dependencies": {
+    "apify": "^3.2.6",
+    "cheerio": "^1.0.0",
+    "undici": "^6.19.8"
+  },
+  "scripts": {
+    "start": "node src/main.js"
+  }
+}
