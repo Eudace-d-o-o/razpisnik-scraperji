@@ -47,6 +47,8 @@ Actor.main(async () => {
 
     $('table.javni-razpisi-collapsible tbody tr').each((_, tr) => {
         const vrstica = $(tr);
+        // tooltip-i (.tooltiptext) se sicer prilepijo na vidno besedilo celice -> odstrani jih
+        vrstica.find('.tooltiptext').remove();
         const a = vrstica.find('td').first().find('a[href*="/javni-razpisi/"]').first();
         const naziv = cist(a.text());
         const url = cist(a.attr('href'));
