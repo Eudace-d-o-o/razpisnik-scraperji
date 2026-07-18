@@ -1,0 +1,9 @@
+{
+  "actorSpecification": 1,
+  "name": "spirit-scraper",
+  "title": "SPIRIT Slovenija scraper",
+  "description": "Zajema odprte javne razpise SPIRIT Slovenija prek uradnega JSON API-ja (brez brskalnika).",
+  "version": "1.0",
+  "input": "./input_schema.json",
+  "dockerfile": "../Dockerfile"
+}
