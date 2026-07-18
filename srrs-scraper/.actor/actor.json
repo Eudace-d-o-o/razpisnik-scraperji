@@ -1,0 +1,9 @@
+{
+  "actorSpecification": 1,
+  "name": "srrs-scraper",
+  "title": "SRRS scraper",
+  "description": "Scraper odprtih javnih razpisov Slovenskega regionalno razvojnega sklada",
+  "version": "1.0",
+  "input": "./input_schema.json",
+  "dockerfile": "../Dockerfile"
+}
