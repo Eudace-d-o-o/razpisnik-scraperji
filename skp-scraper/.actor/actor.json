@@ -1,0 +1,9 @@
+{
+  "actorSpecification": 1,
+  "name": "skp-scraper",
+  "title": "SKP / ARSKTRP scraper",
+  "description": "Scraper odprtih javnih razpisov Skupne kmetijske politike (skp.si)",
+  "version": "1.0",
+  "input": "./input_schema.json",
+  "dockerfile": "../Dockerfile"
+}

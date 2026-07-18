@@ -1,0 +1,14 @@
+{
+  "title": "SKP scraper input",
+  "type": "object",
+  "schemaVersion": 1,
+  "properties": {
+    "action": {
+      "title": "Vir (admin-ajax action)",
+      "type": "string",
+      "description": "aktualni = odprti razpisi (privzeto); pretekli = pretekli razpisi (za test).",
+      "editor": "textfield",
+      "default": "aktualni"
+    }
+  }
+}

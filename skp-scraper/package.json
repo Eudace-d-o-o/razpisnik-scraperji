@@ -1,0 +1,12 @@
+{
+  "name": "skp-scraper",
+  "version": "1.0.0",
+  "type": "commonjs",
+  "description": "Scraper odprtih javnih razpisov SKP/ARSKTRP (kmetijstvo) za razpisnik-portal",
+  "dependencies": {
+    "apify": "^3.2.6"
+  },
+  "scripts": {
+    "start": "node src/main.js"
+  }
+}
