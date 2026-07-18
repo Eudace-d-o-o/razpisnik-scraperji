@@ -73,6 +73,34 @@ async function prebrDokument(docUrl) {
 }
 
 
+// Preprosta pravilna klasifikacija po besedilu povezave — glej pogovor z uporabnikom
+// 2026-07-16: "vzameš naslov povezave, npr. če je Javni razpis daš klasifikacijo javni razpis,
+// če je zavarovanje daš zavarovanje itd." Znane vzorce prepoznamo, sicer klasifikacija = počiščeno
+// besedilo same povezave (vedno nekaj vrnemo, nikoli null).
+function klasificirajPovezavo(tekst) {
+    const t = (tekst || '').toLowerCase();
+    if (/pojasnil/.test(t)) return 'pojasnila';
+    if (/razpisna.?dokumentacij/.test(t)) return 'razpisna dokumentacija';
+    if (/\bannex\b/.test(t)) return 'annex';
+    if (/javni.?razpis/.test(t)) return 'javni razpis';
+    if (/tock|meril.{0,15}ocenj/.test(t)) return 'točkovnik';
+    if (/zavarovanj/.test(t)) return 'zavarovanje';
+    if (/pogodb/.test(t)) return 'pogodba';
+    if (/obrazec/.test(t)) return 'obrazec';
+    if (/izjav[ae]/.test(t)) return 'izjava';
+    if (/prijavni.?list|^vloga\b/.test(t)) return 'prijavni obrazec';
+    if (/navodil/.test(t)) return 'navodila';
+    if (/posebni.?pogoj|^pogoj/.test(t)) return 'posebni pogoji';
+    const ocisceno = (tekst || '').trim().substring(0, 100);
+    return ocisceno || 'dokument';
+}
+
+// Poišče VSE PDF/Word povezave na strani (brez izločanja/omejitve na top N) — vsaka dobi
+// besedilo povezave, prioriteto (za izbiro katere globinsko prebrati v tem koraku) in
+// klasifikacijo (za kasnejše katalogiziranje v dokumentnem sistemu portala, glej
+// pages/api/razpisi-dokumenti-shrani.js). Prej so bili obrazci/izjave/soglasja tiho izločeni —
+// zdaj jih vedno vrnemo (samo z nizko prioriteto za globinsko branje), da jih portal lahko
+// katalogizira. Glej pogovor z uporabnikom 2026-07-16.
 function najdiDokumentLinke($, baseUrl) {
     const linki = [];
     $('a[href]').each((_, el) => {
@@ -83,13 +111,8 @@ function najdiDokumentLinke($, baseUrl) {
         if (!jeDokument) return;
         let absUrl;
         try { absUrl = new URL(href, baseUrl).toString(); } catch { return; }
-        const tekst = ($(el).text() || '').toLowerCase();
+        const tekst = ($(el).text() || '').trim();
         const skupno = (tekst + ' ' + absUrl).toLowerCase();
-
-        // Izključi nepomembne priloge — obrazci, izjave, navodila za e-podpisovanje, vzorci pogodb
-        // NE vsebujejo formalnih pogojev/zneskov, zato jim ne smemo dati prostora v omejenem kontekstu.
-        const jeIzkljucen = /obrazec|izjav[ae]|vzorec.?pogodb|navodil.{0,15}(e-?)?podpis|prijavni.?list|soglasj/i.test(skupno);
-        if (jeIzkljucen) return;
 
         let prioriteta = 1;
         // "Pojasnila" / "razpisna dokumentacija" / "javni razpis" / "annex" (EU razpisi) dokumenti
@@ -99,12 +122,15 @@ function najdiDokumentLinke($, baseUrl) {
         else if (/\bannex\b/i.test(skupno)) prioriteta = 4;
         else if (/javni.?razpis/i.test(skupno)) prioriteta = 3;
         else if (/posebni.?pogoj/i.test(tekst) || /^pogoj/i.test(tekst)) prioriteta = 2;
+        // Obrazci/izjave/vzorci pogodb ipd. NE vsebujejo formalnih pogojev — nizka prioriteta za
+        // GLOBINSKO branje (spodaj), a jih VSEENO katalogiziramo (glej vsiDokumenti v rezultatu).
+        if (/obrazec|izjav[ae]|vzorec.?pogodb|navodil.{0,15}(e-?)?podpis|prijavni.?list|soglasj/i.test(skupno)) prioriteta = 0;
 
-        linki.push({ url: absUrl, tekst, prioriteta });
+        linki.push({ url: absUrl, tekst, prioriteta, klasifikacija: klasificirajPovezavo(tekst) });
     });
     const unikatni = Array.from(new Map(linki.map(l => [l.url, l])).values());
     unikatni.sort((a, b) => b.prioriteta - a.prioriteta);
-    return unikatni.slice(0, 5);
+    return unikatni;
 }
 
 // ─── EU: JSON API ──────────────────────────────────────────────────────────────
@@ -194,10 +220,19 @@ if (!rezultat) {
 
             let dokVsebina = '';
             const dokViri = [];
+            let vsiDokumenti = [];
             if (!preskociPdf) {
                 const dokLinki = najdiDokumentLinke($, request.url);
-                log.info(`[Detail] Najdenih dokumentnih linkov (PDF/Word): ${dokLinki.length}`);
-                for (const l of dokLinki) {
+                vsiDokumenti = dokLinki.map(l => ({ url: l.url, tekst: l.tekst, klasifikacija: l.klasifikacija }));
+                // Globinsko (celo besedilo prebrano v vsebina spodaj) beremo samo prioritetne
+                // dokumente (prioriteta > 0, top 8) — obrazci/izjave se KATALOGIZIRAJO (vsiDokumenti
+                // zgoraj, gre v rezultat), a jih ne beremo v celoti tukaj (nepotreben strošek/čas za
+                // dokumente brez formalnih pogojev). Portal jih lahko kadarkoli naknadno prenese
+                // prek dokumentnega sistema, če jih Claude/uporabnik oceni za relevantne. Glej
+                // pogovor z uporabnikom 2026-07-16.
+                const zaGlobinskoBranje = dokLinki.filter(l => l.prioriteta > 0).slice(0, 8);
+                log.info(`[Detail] Najdenih dokumentnih linkov (PDF/Word): ${dokLinki.length}, za globinsko branje: ${zaGlobinskoBranje.length}`);
+                for (const l of zaGlobinskoBranje) {
                     const txt = await prebrDokument(l.url);
                     if (txt && txt.length > 50) {
                         const cisto = txt.replace(/\s+/g, ' ').trim();
@@ -277,6 +312,11 @@ if (!rezultat) {
                 status,
                 vir,
                 pdfViri: dokViri,
+                // VSI najdeni dokumentni linki na strani (ne samo tisti globinsko prebrani zgoraj)
+                // — portal (pages/api/razpisi-dokumenti-shrani.js) jih prenese in katalogizira v
+                // dokumentni sistem, vsakega s svojo klasifikacijo. Glej pogovor z uporabnikom
+                // 2026-07-16.
+                vsiDokumenti,
             };
 
             log.info(`[Detail] Naziv: ${naslov.substring(0, 60)}`);
