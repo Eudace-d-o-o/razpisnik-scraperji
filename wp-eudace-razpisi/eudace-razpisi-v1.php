@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Eudace — Razpisi tabela v1
  * Description: Shortcode [eudace_razpisi] — javna tabela razpisov (CPT "razpis") s filtri (tip, status, razpisovalec, rok), iskanjem in lead obrazcem. Strukturne podatke vleče iz portala (osnutki), tip/status iz kategorije. Server-side izris (SEO).
- * Version: 1.3
+ * Version: 1.4
  * Author: Eudace
  */
 
@@ -85,7 +85,9 @@ function eudace_razpisi_shortcode($atts) {
         $m = isset($meta[eudace_norm($naslov)]) ? $meta[eudace_norm($naslov)] : null;
         $razpisovalec = $m && $m['razpisovalec'] ? $m['razpisovalec'] : '';
         if ($razpisovalec) $razpisovalci[$razpisovalec] = true;
-        list($rokPrikaz, $rokTs) = eudace_datum($m ? $m['rok'] : '');
+        // rok: primarno iz ACF datum_oddaje razpisa (vsak ga ima), sicer iz portala
+        $rokAcf = function_exists('get_field') ? get_field('datum_oddaje', $id) : '';
+        list($rokPrikaz, $rokTs) = eudace_datum($rokAcf ? $rokAcf : ($m ? $m['rok'] : ''));
         // portalski status (odprt/zaprt) prevlada nad kategorijo, če obstaja
         if ($m && $m['status']) {
             $ps = mb_strtolower($m['status'], 'UTF-8');
@@ -93,6 +95,8 @@ function eudace_razpisi_shortcode($atts) {
             elseif (strpos($ps,'napoved')!==false || strpos($ps,'nacrtovan')!==false) $status='napovedan';
             elseif (strpos($ps,'odprt')!==false) $status='odprt';
         }
+        // če status še neznan, izpelji iz roka: pretekli -> zaprt, prihodnji -> odprt
+        if ($status === '' && $rokTs) $status = ($rokTs < time()) ? 'zaprt' : 'odprt';
         $statusMap = ['odprt'=>'Odprt','zaprt'=>'Zaprt','napovedan'=>'Napovedan'];
         $statusLabel = isset($statusMap[$status]) ? $statusMap[$status] : '—';
         $statusCls = $status !== '' ? $status : 'nd';
