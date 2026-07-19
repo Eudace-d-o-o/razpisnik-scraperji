@@ -38,7 +38,9 @@ function eudace_portal_meta() {
     $r = wp_remote_get(EUDACE_PORTAL_URL . '/api/javno/osnutki-meta', ['timeout' => 12]);
     if (!is_wp_error($r) && wp_remote_retrieve_response_code($r) == 200) {
         $j = json_decode(wp_remote_retrieve_body($r), true);
-        if (!empty($j['meta'])) foreach ($j['meta'] as $m) { $map[$m['kljuc']] = $m; }
+        if (!empty($j['meta'])) foreach ($j['meta'] as $m) {
+            if (!empty($m['kljuci'])) foreach ($m['kljuci'] as $k) { if (!isset($map[$k])) $map[$k] = $m; }
+        }
     }
     set_transient('eudace_razpisi_meta', $map, 30 * MINUTE_IN_SECONDS);
     return $map;
