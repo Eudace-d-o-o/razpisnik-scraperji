@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Eudace — Razpisi tabela v1
  * Description: Shortcode [eudace_razpisi] — javna tabela razpisov (CPT "razpis") s filtri (tip, status, razpisovalec, rok), iskanjem in lead obrazcem. Strukturne podatke vleče iz portala (osnutki), tip/status iz kategorije. Server-side izris (SEO).
- * Version: 1.4
+ * Version: 1.5
  * Author: Eudace
  */
 
@@ -55,7 +55,7 @@ function eudace_razpisi_shortcode($atts) {
         'posts_per_page' => intval($atts['stevilo']), 'orderby' => 'date', 'order' => 'DESC', 'no_found_rows' => true,
     ]);
 
-    $razpisovalci = []; $vrstice = '';
+    $razpisovalci = []; $zbrani = [];
 
     while ($q->have_posts()) {
         $q->the_post();
@@ -103,18 +103,42 @@ function eudace_razpisi_shortcode($atts) {
 
         $iskalno = eudace_norm($naslov . ' ' . implode(' ', $katImena) . ' ' . $razpisovalec);
 
-        $vrstice .= '<tr data-tip="' . $tip . '" data-status="' . $status . '" data-razpisovalec="' . esc_attr($razpisovalec) . '"'
+        // NUJNOST: odprti razpisi z bližnjim rokom dobijo "še X dni" oznako (spodbuja akcijo)
+        $dniHtml = '';
+        if ($status === 'odprt' && $rokTs > time()) {
+            $dni = (int) ceil(($rokTs - time()) / 86400);
+            if ($dni <= 30) $dniHtml = '<span class="er-dni' . ($dni <= 7 ? ' er-dni-r' : '') . '">še ' . $dni . ' dni</span>';
+        }
+
+        // CTA glede na status: odprt -> preveri upravičenost (bonbonček); zaprt/napovedan -> čakalna lista
+        if ($status === 'odprt' || $status === '') {
+            $ctaHtml = '<button type="button" class="er-cta" data-intent="povprasevanje" data-naziv="' . esc_attr($naslov) . '" data-url="' . esc_url($url) . '">Preveri upravičenost</button>';
+        } else {
+            $ctaHtml = '<button type="button" class="er-cta er-cta-o" data-intent="obvesti" data-naziv="' . esc_attr($naslov) . '" data-url="' . esc_url($url) . '">Obvesti me</button>';
+        }
+
+        $html = '<tr data-tip="' . $tip . '" data-status="' . $status . '" data-razpisovalec="' . esc_attr($razpisovalec) . '"'
             . ' data-rokts="' . $rokTs . '" data-txt="' . esc_attr($iskalno) . '">'
             . '<td class="er-c-naziv er-' . $tip . '"><a class="er-naziv" href="' . esc_url($url) . '">' . esc_html($naslov) . '</a>'
             . (!empty($katImena) ? '<div class="er-kat">' . esc_html(implode(' · ', array_slice($katImena,0,2))) . '</div>' : '') . '</td>'
             . '<td><span class="er-badge er-b-' . $tip . '">' . $tipLabel . '</span></td>'
             . '<td class="er-c-razp">' . ($razpisovalec ? esc_html($razpisovalec) : '—') . '</td>'
-            . '<td class="er-c-rok">' . ($rokPrikaz ? esc_html($rokPrikaz) : '<span class="er-nd">—</span>') . '</td>'
+            . '<td class="er-c-rok">' . ($rokPrikaz ? esc_html($rokPrikaz) : '<span class="er-nd">—</span>') . $dniHtml . '</td>'
             . '<td><span class="er-st er-st-' . $statusCls . '">' . $statusLabel . '</span></td>'
-            . '<td class="er-c-cta"><button type="button" class="er-cta" data-naziv="' . esc_attr($naslov) . '" data-url="' . esc_url($url) . '">Zanima me</button></td>'
+            . '<td class="er-c-cta">' . $ctaHtml . '</td>'
             . '</tr>';
+
+        // razvrstitev: odprti (po roku naraščajoče, brez roka zadnji) -> napovedani -> zaprti
+        $statusRed = ($status === 'zaprt') ? 2 : (($status === 'napovedan') ? 1 : 0);
+        $zbrani[] = ['red' => $statusRed, 'rok' => $rokTs ? $rokTs : PHP_INT_MAX, 'html' => $html];
     }
     wp_reset_postdata();
+
+    usort($zbrani, function($a, $b) {
+        if ($a['red'] !== $b['red']) return $a['red'] - $b['red'];
+        return $a['rok'] <=> $b['rok'];
+    });
+    $vrstice = implode('', array_column($zbrani, 'html'));
 
     ksort($razpisovalci);
     $razpOpt = '<option value="">Vsi razpisovalci</option>';
@@ -152,6 +176,11 @@ function eudace_razpisi_shortcode($atts) {
 .er-st-odprt{background:var(--zelbg);color:var(--zel)} .er-st-zaprt{background:var(--sivbg);color:var(--siva)} .er-st-napovedan{background:var(--amberbg);color:var(--amber)} .er-st-nd{background:var(--sivbg);color:var(--siva)}
 .er-cta{background:var(--g);color:#fff;font-weight:700;font-size:14px;padding:9px 15px;border:none;border-radius:8px;cursor:pointer;white-space:nowrap}
 .er-cta:hover{background:var(--gh)}
+.er-cta-o{background:#fff;color:var(--m);border:2px solid var(--m);padding:7px 13px}
+.er-cta-o:hover{background:var(--krbg)}
+.er-dni{display:inline-block;margin-left:8px;font-size:11.5px;font-weight:700;padding:2px 8px;border-radius:20px;background:var(--amberbg);color:var(--amber);white-space:nowrap}
+.er-dni-r{background:#fdecea;color:#c0392b}
+.er-pokazi{margin-top:10px;background:var(--m);color:#fff;border:none;border-radius:8px;padding:9px 16px;cursor:pointer;font-size:14px;font-weight:700}
 .er-prazno{padding:24px;text-align:center;color:var(--siva);display:none}
 .er-modal{position:fixed;inset:0;background:rgba(16,40,70,.55);display:none;align-items:center;justify-content:center;z-index:99999;padding:16px}
 .er-modal.on{display:flex}
@@ -172,7 +201,7 @@ function eudace_razpisi_shortcode($atts) {
 <div class="er-filtri">
   <input id="erq" type="text" placeholder="Iščite razpis…">
   <select id="ertip"><option value="">Vsi tipi</option><option value="nepovratna">Nepovratna sredstva</option><option value="kredit">Ugodni krediti</option></select>
-  <select id="erstat"><option value="">Vsi statusi</option><option value="odprt">Odprti</option><option value="napovedan">Napovedani</option><option value="zaprt">Zaprti</option></select>
+  <select id="erstat"><option value="odprt" selected>Odprti razpisi</option><option value="napovedan">Napovedani</option><option value="zaprt">Zaprti</option><option value="">Vsi statusi</option></select>
   <select id="errazp"><?php echo $razpOpt; ?></select>
   <span class="er-count" id="erc"></span>
 </div>
@@ -183,10 +212,10 @@ function eudace_razpisi_shortcode($atts) {
 <tbody id="erb"><?php echo $vrstice; ?></tbody>
 </table>
 </div>
-<div class="er-prazno" id="erp">Za izbrane pogoje ni razpisov. Poskusite drugačno iskanje ali filtre.</div>
+<div class="er-prazno" id="erp">Za izbrane pogoje ni razpisov.<br><button type="button" class="er-pokazi" id="ervse">Pokaži vse razpise</button></div>
 
 <div class="er-modal" id="erm" role="dialog" aria-modal="true">
-<div class="er-box"><h3>Zanima me ta razpis</h3><p class="er-za" id="erza"></p>
+<div class="er-box"><h3 id="ernaslov">Preverimo vašo upravičenost — brezplačno</h3><p class="er-za" id="erza"></p><p class="er-za" id="erpod"></p>
 <form id="erf">
 <label>Ime in priimek</label><input name="ime" type="text">
 <label>E-pošta *</label><input name="email" type="email" required>
@@ -214,17 +243,26 @@ var arr=rows.slice().sort(function(a,bb){var x=+a.getAttribute('data-rokts')||0,
 if(x===0)return 1;if(y===0)return -1;return sortDir*(x-y);});arr.forEach(function(r){b.appendChild(r);});
 this.textContent='Rok oddaje '+(sortDir===1?'↑':'↓');});
 
+document.getElementById('ervse').addEventListener('click',function(){q.value='';tip.value='';stat.value='';razp.value='';f();});
 var m=document.getElementById('erm'),za=document.getElementById('erza'),fo=document.getElementById('erf'),
-msg=document.getElementById('ermsg'),ss=document.getElementById('ers'),cur={n:'',u:''};
-b.addEventListener('click',function(e){var t=e.target.closest('.er-cta');if(t){cur={n:t.getAttribute('data-naziv'),u:t.getAttribute('data-url')};za.textContent=cur.n;msg.textContent='';m.classList.add('on');}});
+msg=document.getElementById('ermsg'),ss=document.getElementById('ers'),nasl=document.getElementById('ernaslov'),
+pod=document.getElementById('erpod'),cur={n:'',u:'',i:'povprasevanje'};
+b.addEventListener('click',function(e){var t=e.target.closest('.er-cta');if(t){
+cur={n:t.getAttribute('data-naziv'),u:t.getAttribute('data-url'),i:t.getAttribute('data-intent')||'povprasevanje'};
+za.textContent=cur.n;msg.textContent='';
+if(cur.i==='obvesti'){nasl.textContent='Obvestite me, ko bo razpis odprt';pod.textContent='Sporočimo vam ob (ponovnem) odprtju in brezplačno preverimo, ali vaše podjetje izpolnjuje pogoje.';}
+else{nasl.textContent='Preverimo vašo upravičenost — brezplačno';pod.textContent='Naši svetovalci preverijo, ali vaše podjetje izpolnjuje pogoje razpisa, in vam svetujejo pri prijavi. Brez obveznosti.';}
+m.classList.add('on');}});
 document.getElementById('erx').addEventListener('click',function(){m.classList.remove('on');});
 m.addEventListener('click',function(e){if(e.target===m)m.classList.remove('on');});
 fo.addEventListener('submit',function(e){e.preventDefault();
 if(!document.getElementById('ersog').checked){msg.style.color='#c0392b';msg.textContent='Potrebujemo vaše soglasje za kontakt.';return;}
-var d=new FormData(fo),pl={ime:d.get('ime'),email:d.get('email'),telefon:d.get('telefon'),podjetje_naziv:d.get('podjetje_naziv'),projekt_opis:d.get('projekt_opis'),website:d.get('website'),soglasje:true,razpis_interes_naziv:cur.n,razpis_interes_url:cur.u};
+var d=new FormData(fo),op=d.get('projekt_opis')||'';
+if(cur.i==='obvesti')op='[ČAKALNA LISTA — obvesti ob odprtju] '+op;
+var pl={ime:d.get('ime'),email:d.get('email'),telefon:d.get('telefon'),podjetje_naziv:d.get('podjetje_naziv'),projekt_opis:op,website:d.get('website'),soglasje:true,razpis_interes_naziv:cur.n,razpis_interes_url:cur.u};
 ss.disabled=true;msg.style.color='';msg.textContent='Pošiljam…';
 fetch(PORTAL+'/api/javno/lead',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(pl)}).then(function(r){return r.json();}).then(function(x){
-if(x&&x.ok){fo.reset();msg.style.color='#2f8f5b';msg.textContent='Hvala! Kmalu vas kontaktiramo.';setTimeout(function(){m.classList.remove('on');},2200);}
+if(x&&x.ok){fo.reset();msg.style.color='#2f8f5b';msg.textContent=cur.i==='obvesti'?'Hvala! Obvestimo vas ob odprtju razpisa.':'Hvala! Odzovemo se v enem delovnem dnevu.';setTimeout(function(){m.classList.remove('on');},2500);}
 else{msg.style.color='#c0392b';msg.textContent=(x&&x.error)||'Napaka pri pošiljanju.';}}).catch(function(){msg.style.color='#c0392b';msg.textContent='Napaka pri povezavi.';}).finally(function(){ss.disabled=false;});});
 })();
 </script>
