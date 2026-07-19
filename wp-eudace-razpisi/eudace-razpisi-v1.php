@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Eudace — Razpisi tabela v1
  * Description: Shortcode [eudace_razpisi] — javna tabela razpisov (CPT "razpis") s filtri (tip, status, razpisovalec, rok), iskanjem in lead obrazcem. Strukturne podatke vleče iz portala (osnutki), tip/status iz kategorije. Server-side izris (SEO).
- * Version: 1.5
+ * Version: 1.6
  * Author: Eudace
  */
 
@@ -101,7 +101,12 @@ function eudace_razpisi_shortcode($atts) {
         $statusLabel = isset($statusMap[$status]) ? $statusMap[$status] : '—';
         $statusCls = $status !== '' ? $status : 'nd';
 
-        $iskalno = eudace_norm($naslov . ' ' . implode(' ', $katImena) . ' ' . $razpisovalec);
+        // iskalno besedilo vključuje tudi ACF opis/izvleček -> boljše ujemanje projektov
+        $opisTxt = '';
+        if (function_exists('get_field')) {
+            $opisTxt = wp_strip_all_tags((string) get_field('kratek_opis', $id) . ' ' . (string) get_field('izvlecek', $id));
+        }
+        $iskalno = mb_substr(eudace_norm($naslov . ' ' . implode(' ', $katImena) . ' ' . $razpisovalec . ' ' . $opisTxt), 0, 500);
 
         // NUJNOST: odprti razpisi z bližnjim rokom dobijo "še X dni" oznako (spodbuja akcijo)
         $dniHtml = '';
@@ -181,6 +186,15 @@ function eudace_razpisi_shortcode($atts) {
 .er-dni{display:inline-block;margin-left:8px;font-size:11.5px;font-weight:700;padding:2px 8px;border-radius:20px;background:var(--amberbg);color:var(--amber);white-space:nowrap}
 .er-dni-r{background:#fdecea;color:#c0392b}
 .er-pokazi{margin-top:10px;background:var(--m);color:#fff;border:none;border-radius:8px;padding:9px 16px;cursor:pointer;font-size:14px;font-weight:700}
+.er-wrap .er-finder{background:linear-gradient(180deg,#eaf3fc,#f6f9fd);border:1px solid var(--rob);border-radius:12px;padding:16px 18px;margin:0 0 16px}
+.er-f-nas{font-size:16px;font-weight:800;color:var(--md);margin-bottom:10px}
+.er-wrap .er-finder textarea{width:100%!important;font:inherit!important;font-size:14.5px!important;padding:10px 12px!important;border:1px solid #cddcee!important;border-radius:8px!important;background:#fff!important;color:var(--navy)!important;box-sizing:border-box!important;resize:vertical;min-height:56px}
+.er-wrap .er-finder textarea:focus{outline:2px solid var(--m)!important;outline-offset:1px}
+.er-f-akc{display:flex;gap:10px;align-items:center;margin-top:10px;flex-wrap:wrap}
+.er-f-res{font-size:14px;font-weight:700;color:var(--md)}
+.er-f-cta{margin-top:12px;padding:12px 14px;background:#fff;border:1px solid var(--rob);border-radius:10px;font-size:14.5px;color:var(--navy);display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+tr.er-zadetek td.er-c-naziv{border-left-color:var(--g)!important}
+.er-oc{display:inline-block;margin-left:8px;font-size:11.5px;font-weight:700;padding:2px 8px;border-radius:20px;background:#fdf3d7;color:#8a6508;white-space:nowrap}
 .er-prazno{padding:24px;text-align:center;color:var(--siva);display:none}
 .er-modal{position:fixed;inset:0;background:rgba(16,40,70,.55);display:none;align-items:center;justify-content:center;z-index:99999;padding:16px}
 .er-modal.on{display:flex}
@@ -197,6 +211,20 @@ function eudace_razpisi_shortcode($atts) {
 .er-msg{font-size:14px;margin-top:12px}
 @media(max-width:600px){.er-cta{padding:8px 12px;font-size:13px}}
 </style>
+
+<div class="er-finder">
+  <div class="er-f-nas">🔎 Opišite svoj projekt — poiščemo primerne razpise</div>
+  <textarea id="erproj" rows="2" placeholder="Npr.: Kupujemo nov CNC stroj za širitev proizvodnje, 15 zaposlenih, naložba okoli 200.000 €"></textarea>
+  <div class="er-f-akc">
+    <button type="button" id="erfind" class="er-cta">Najdi primerne razpise</button>
+    <button type="button" id="erfreset" class="er-preklic" style="display:none">Ponastavi</button>
+    <span class="er-f-res" id="erfres"></span>
+  </div>
+  <div class="er-f-cta" id="erfcta" style="display:none">
+    Želite, da svetovalec <b>brezplačno preveri upravičenost</b> za te razpise?
+    <button type="button" class="er-cta" id="erflead">Pustite kontakt</button>
+  </div>
+</div>
 
 <div class="er-filtri">
   <input id="erq" type="text" placeholder="Iščite razpis…">
@@ -244,6 +272,53 @@ if(x===0)return 1;if(y===0)return -1;return sortDir*(x-y);});arr.forEach(functio
 this.textContent='Rok oddaje '+(sortDir===1?'↑':'↓');});
 
 document.getElementById('ervse').addEventListener('click',function(){q.value='';tip.value='';stat.value='';razp.value='';f();});
+
+/* ISKALNIK PO PROJEKTU: opis -> tockovanje po prefiksih -> prerazporedi zadetke na vrh */
+var fin=document.getElementById('erfind'),fres=document.getElementById('erfres'),
+frst=document.getElementById('erfreset'),fcta=document.getElementById('erfcta'),
+fproj=document.getElementById('erproj'),zadnjiOpis='',topZadetki=[];
+var STOP={in:1,ali:1,za:1,na:1,je:1,se:1,so:1,bo:1,bi:1,da:1,ki:1,od:1,do:1,po:1,pri:1,pod:1,nad:1,iz:1,ter:1,nas:1,nam:1,smo:1,ima:1,imamo:1,zelimo:1,okoli:1,eur:1,evrov:1,podjetje:1,projekt:1,razpis:1,sredstva:1,nakup:1,novo:1,nov:1,nova:1};
+function normJs(s){return s.toLowerCase().replace(/[čć]/g,'c').replace(/š/g,'s').replace(/ž/g,'z').replace(/đ/g,'d').replace(/[^a-z0-9]+/g,' ').trim();}
+function najdi(){
+  var opis=fproj.value.trim();
+  if(opis.length<10){fres.textContent='Vpišite vsaj nekaj besed o projektu.';return;}
+  zadnjiOpis=opis;
+  var toks=normJs(opis).split(' ').filter(function(t){return t.length>=4&&!STOP[t];});
+  var pref=toks.map(function(t){return t.slice(0,Math.min(t.length,6));});
+  pref=pref.filter(function(v,i){return pref.indexOf(v)===i;});
+  if(!pref.length){fres.textContent='Opišite projekt bolj konkretno.';return;}
+  q.value='';tip.value='';stat.value='';razp.value='';
+  var ocenjeni=[];
+  rows.forEach(function(r){var txt=' '+r.getAttribute('data-txt')+' ',z=0;
+    pref.forEach(function(p){if(txt.indexOf(p)>-1)z++;});
+    r.querySelectorAll('.er-oc').forEach(function(x){x.remove();});
+    r.classList.remove('er-zadetek');
+    ocenjeni.push({r:r,z:z});});
+  var zadetki=ocenjeni.filter(function(o){return o.z>0;}).sort(function(a,b){return b.z-a.z;});
+  topZadetki=zadetki.slice(0,5).map(function(o){return o.r.querySelector('.er-naziv').textContent;});
+  if(!zadetki.length){rows.forEach(function(r){r.style.display='none';});c.textContent='0 razpisov';p.style.display='block';fres.textContent='Ni neposrednih zadetkov — pustite kontakt in svetovalec poišče možnosti za vas.';fcta.style.display='flex';frst.style.display='';return;}
+  zadetki.forEach(function(o){o.r.classList.add('er-zadetek');
+    var ocEl=document.createElement('span');ocEl.className='er-oc';ocEl.textContent='ujemanje';
+    o.r.querySelector('.er-c-naziv').appendChild(ocEl);
+    b.appendChild(o.r);o.r.style.display='';});
+  ocenjeni.filter(function(o){return o.z===0;}).forEach(function(o){o.r.style.display='none';});
+  /* zadetki na vrh v pravem vrstnem redu */
+  zadetki.slice().reverse().forEach(function(o){b.insertBefore(o.r,b.firstChild);});
+  c.textContent=zadetki.length+' primernih razpisov';p.style.display='none';
+  fres.textContent='✓ Našli smo '+zadetki.length+' primernih razpisov (označeni zgoraj).';
+  fcta.style.display='flex';frst.style.display='';
+  try{fetch(PORTAL+'/api/javno/ujemanje',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({opis:opis}),mode:'no-cors'});}catch(e){}
+}
+fin.addEventListener('click',najdi);
+frst.addEventListener('click',function(){fproj.value='';fres.textContent='';fcta.style.display='none';frst.style.display='none';zadnjiOpis='';topZadetki=[];
+  rows.forEach(function(r){r.classList.remove('er-zadetek');r.querySelectorAll('.er-oc').forEach(function(x){x.remove();});});stat.value='odprt';f();});
+document.getElementById('erflead').addEventListener('click',function(){
+  cur={n:topZadetki[0]||'',u:'',i:'projekt'};
+  za.textContent=topZadetki.length?('Primerni razpisi: '+topZadetki.slice(0,3).join(' · ')):'';
+  nasl.textContent='Brezplačna preverba upravičenosti za vaš projekt';
+  pod.textContent='Svetovalec pregleda vaš projekt in vam predlaga najprimernejše razpise ter pogoje. Brez obveznosti.';
+  fo.querySelector('[name=projekt_opis]').value=zadnjiOpis;
+  msg.textContent='';m.classList.add('on');});
 var m=document.getElementById('erm'),za=document.getElementById('erza'),fo=document.getElementById('erf'),
 msg=document.getElementById('ermsg'),ss=document.getElementById('ers'),nasl=document.getElementById('ernaslov'),
 pod=document.getElementById('erpod'),cur={n:'',u:'',i:'povprasevanje'};
@@ -259,7 +334,7 @@ fo.addEventListener('submit',function(e){e.preventDefault();
 if(!document.getElementById('ersog').checked){msg.style.color='#c0392b';msg.textContent='Potrebujemo vaše soglasje za kontakt.';return;}
 var d=new FormData(fo),op=d.get('projekt_opis')||'';
 if(cur.i==='obvesti')op='[ČAKALNA LISTA — obvesti ob odprtju] '+op;
-var pl={ime:d.get('ime'),email:d.get('email'),telefon:d.get('telefon'),podjetje_naziv:d.get('podjetje_naziv'),projekt_opis:op,website:d.get('website'),soglasje:true,razpis_interes_naziv:cur.n,razpis_interes_url:cur.u};
+var pl={ime:d.get('ime'),email:d.get('email'),telefon:d.get('telefon'),podjetje_naziv:d.get('podjetje_naziv'),projekt_opis:op,website:d.get('website'),soglasje:true,razpis_interes_naziv:cur.n,razpis_interes_url:cur.u,iskani_pojmi:zadnjiOpis||'',ujemanje:(topZadetki&&topZadetki.length)?topZadetki:null};
 ss.disabled=true;msg.style.color='';msg.textContent='Pošiljam…';
 fetch(PORTAL+'/api/javno/lead',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(pl)}).then(function(r){return r.json();}).then(function(x){
 if(x&&x.ok){fo.reset();msg.style.color='#2f8f5b';msg.textContent=cur.i==='obvesti'?'Hvala! Obvestimo vas ob odprtju razpisa.':'Hvala! Odzovemo se v enem delovnem dnevu.';setTimeout(function(){m.classList.remove('on');},2500);}
