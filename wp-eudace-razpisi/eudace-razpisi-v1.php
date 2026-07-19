@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Eudace — Razpisi tabela v1
  * Description: Shortcode [eudace_razpisi] — javna tabela razpisov (CPT "razpis") s filtri (tip, status, razpisovalec, rok), iskanjem in lead obrazcem. Strukturne podatke vleče iz portala (osnutki), tip/status iz kategorije. Server-side izris (SEO).
- * Version: 1.1
+ * Version: 1.2
  * Author: Eudace
  */
 
@@ -61,10 +61,15 @@ function eudace_razpisi_shortcode($atts) {
         $q->the_post();
         $id = get_the_ID(); $naslov = get_the_title(); $url = get_permalink();
 
-        // tip + status iz kategorije (taksonomija razpis.eu)
-        $terms = get_the_terms($id, 'kategorija');
+        // tip + status iz kategorij — beri VSE taksonomije razpisa (ime taksonomije ni nujno 'kategorija')
+        $terms = [];
+        foreach (get_object_taxonomies('razpis') as $tx) {
+            if ($tx === 'post_tag') continue;
+            $tt = get_the_terms($id, $tx);
+            if ($tt && !is_wp_error($tt)) $terms = array_merge($terms, $tt);
+        }
         $katImena = []; $jeKredit = false; $status = 'odprt';
-        if ($terms && !is_wp_error($terms)) foreach ($terms as $t) {
+        foreach ($terms as $t) {
             $katImena[] = $t->name;
             $s = $t->slug . ' ' . $t->name;
             if (stripos($s, 'kredit') !== false || stripos($s, 'posojil') !== false) $jeKredit = true;
