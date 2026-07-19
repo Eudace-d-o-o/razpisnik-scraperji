@@ -1,6 +1,6 @@
 <?php
 /**
- * Plugin Name: Eudace — Razpisi tabela
+ * Plugin Name: Eudace — Razpisi tabela v1
  * Description: Shortcode [eudace_razpisi] — javna tabela razpisov (CPT "razpis") s filtri po kategoriji, iskanjem in lead obrazcem, povezano s portalom razpisnik. Server-side izris (SEO).
  * Version: 1.0
  * Author: Eudace
