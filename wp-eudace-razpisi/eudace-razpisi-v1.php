@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Eudace — Razpisi tabela v1
  * Description: Shortcode [eudace_razpisi] — javna tabela razpisov (CPT "razpis") s filtri (tip, status, razpisovalec, rok), iskanjem in lead obrazcem. Strukturne podatke vleče iz portala (osnutki), tip/status iz kategorije. Server-side izris (SEO).
- * Version: 1.2
+ * Version: 1.3
  * Author: Eudace
  */
 
@@ -68,7 +68,7 @@ function eudace_razpisi_shortcode($atts) {
             $tt = get_the_terms($id, $tx);
             if ($tt && !is_wp_error($tt)) $terms = array_merge($terms, $tt);
         }
-        $katImena = []; $jeKredit = false; $status = 'odprt';
+        $katImena = []; $jeKredit = false; $status = '';
         foreach ($terms as $t) {
             $katImena[] = $t->name;
             $s = $t->slug . ' ' . $t->name;
@@ -76,6 +76,8 @@ function eudace_razpisi_shortcode($atts) {
             if (stripos($s, 'arhiv') !== false || stripos($s, 'zaprt') !== false) $status = 'zaprt';
             elseif (stripos($s, 'prihaj') !== false || stripos($s, 'napoved') !== false) $status = 'napovedan';
         }
+        // tip ZANESLJIVO iz naziva (kredit/mikrokredit/posojilo) — kategorija le dodaten namig
+        if (preg_match('/kredit|posojil/iu', $naslov)) $jeKredit = true;
         $tip = $jeKredit ? 'kredit' : 'nepovratna';
         $tipLabel = $jeKredit ? 'Ugodni kredit' : 'Nepovratna sredstva';
 
@@ -88,10 +90,12 @@ function eudace_razpisi_shortcode($atts) {
         if ($m && $m['status']) {
             $ps = mb_strtolower($m['status'], 'UTF-8');
             if (strpos($ps,'zaprt')!==false) $status='zaprt';
-            elseif (strpos($ps,'napoved')!==false || strpos($ps,'na&#269;rtovan')!==false || strpos($ps,'nacrtovan')!==false) $status='napovedan';
+            elseif (strpos($ps,'napoved')!==false || strpos($ps,'nacrtovan')!==false) $status='napovedan';
             elseif (strpos($ps,'odprt')!==false) $status='odprt';
         }
-        $statusLabel = ['odprt'=>'Odprt','zaprt'=>'Zaprt','napovedan'=>'Napovedan'][$status];
+        $statusMap = ['odprt'=>'Odprt','zaprt'=>'Zaprt','napovedan'=>'Napovedan'];
+        $statusLabel = isset($statusMap[$status]) ? $statusMap[$status] : '—';
+        $statusCls = $status !== '' ? $status : 'nd';
 
         $iskalno = eudace_norm($naslov . ' ' . implode(' ', $katImena) . ' ' . $razpisovalec);
 
@@ -102,7 +106,7 @@ function eudace_razpisi_shortcode($atts) {
             . '<td><span class="er-badge er-b-' . $tip . '">' . $tipLabel . '</span></td>'
             . '<td class="er-c-razp">' . ($razpisovalec ? esc_html($razpisovalec) : '—') . '</td>'
             . '<td class="er-c-rok">' . ($rokPrikaz ? esc_html($rokPrikaz) : '<span class="er-nd">—</span>') . '</td>'
-            . '<td><span class="er-st er-st-' . $status . '">' . $statusLabel . '</span></td>'
+            . '<td><span class="er-st er-st-' . $statusCls . '">' . $statusLabel . '</span></td>'
             . '<td class="er-c-cta"><button type="button" class="er-cta" data-naziv="' . esc_attr($naslov) . '" data-url="' . esc_url($url) . '">Zanima me</button></td>'
             . '</tr>';
     }
@@ -117,18 +121,20 @@ function eudace_razpisi_shortcode($atts) {
 <div class="er-wrap">
 <style>
 .er-wrap{--m:#1c5fa8;--md:#144a86;--navy:#16324f;--g:#f3b108;--gh:#d99f06;--tint:#f3f8fd;--rob:#d7e4f3;--siva:#5b6f83;--zel:#2f8f5b;--zelbg:#e7f4ec;--krbg:#e7f1fb;--amber:#a9741a;--amberbg:#fbf1dc;--sivbg:#eef1f5;color:var(--navy);font-family:inherit}
-.er-filtri{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:0 0 14px}
-.er-filtri input,.er-filtri select{font:inherit;font-size:14.5px;padding:9px 12px;border:1px solid #bcd3ea;border-radius:8px;background:#fff;color:var(--navy)}
-.er-filtri input{flex:1;min-width:200px}
-.er-filtri input:focus,.er-filtri select:focus{outline:2px solid var(--m);outline-offset:1px;border-color:var(--m)}
-.er-count{font-size:13px;color:var(--siva);margin-left:auto;white-space:nowrap}
+.er-wrap .er-filtri{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin:0 0 18px;background:#f6f9fd;border:1px solid var(--rob);border-radius:12px;padding:12px 14px}
+.er-wrap .er-filtri input,.er-wrap .er-filtri select{font:inherit!important;font-size:14.5px!important;height:44px!important;padding:0 14px!important;border:1px solid #cddcee!important;border-radius:8px!important;background:#fff!important;color:var(--navy)!important;margin:0!important;box-shadow:none!important;max-width:none!important;line-height:1.2!important}
+.er-wrap .er-filtri input{flex:1 1 240px!important;min-width:200px!important}
+.er-wrap .er-filtri select{flex:0 0 auto!important;width:auto!important;min-width:150px!important;cursor:pointer}
+.er-wrap .er-filtri input:focus,.er-wrap .er-filtri select:focus{outline:2px solid var(--m)!important;outline-offset:1px;border-color:var(--m)!important}
+.er-count{font-size:13px;color:var(--siva);margin-left:auto;white-space:nowrap;font-weight:600}
 .er-scroll{overflow-x:auto;border:1px solid var(--rob);border-radius:12px}
 .er-tab{border-collapse:collapse;width:100%;font-size:14.5px;min-width:760px}
 .er-tab thead th{background:var(--m);color:#fff;text-align:left;font-weight:600;padding:12px 14px;white-space:nowrap;font-size:13.5px}
 .er-tab thead th.er-sortable{cursor:pointer;user-select:none}
 .er-tab thead th.er-sortable:hover{background:var(--md)}
-.er-tab td{padding:12px 14px;border-top:1px solid var(--rob);vertical-align:middle}
+.er-tab td{padding:14px 16px;border-top:1px solid var(--rob);vertical-align:middle}
 .er-tab tbody tr:nth-child(even) td{background:var(--tint)}
+.er-tab tbody tr:hover td{background:#e7f1fb}
 .er-c-naziv{border-left:4px solid var(--zel)}
 .er-c-naziv.er-kredit{border-left-color:var(--m)}
 .er-naziv{font-weight:700;color:var(--m);text-decoration:none}
@@ -139,7 +145,7 @@ function eudace_razpisi_shortcode($atts) {
 .er-c-razp{color:var(--navy);font-size:13.5px}
 .er-c-rok{white-space:nowrap;font-variant-numeric:tabular-nums} .er-nd{color:var(--siva)}
 .er-st{display:inline-block;font-size:12px;font-weight:700;padding:2px 9px;border-radius:20px;white-space:nowrap}
-.er-st-odprt{background:var(--zelbg);color:var(--zel)} .er-st-zaprt{background:var(--sivbg);color:var(--siva)} .er-st-napovedan{background:var(--amberbg);color:var(--amber)}
+.er-st-odprt{background:var(--zelbg);color:var(--zel)} .er-st-zaprt{background:var(--sivbg);color:var(--siva)} .er-st-napovedan{background:var(--amberbg);color:var(--amber)} .er-st-nd{background:var(--sivbg);color:var(--siva)}
 .er-cta{background:var(--g);color:#fff;font-weight:700;font-size:14px;padding:9px 15px;border:none;border-radius:8px;cursor:pointer;white-space:nowrap}
 .er-cta:hover{background:var(--gh)}
 .er-prazno{padding:24px;text-align:center;color:var(--siva);display:none}
