@@ -1,0 +1,13 @@
+{
+  "name": "phv-scraper",
+  "version": "1.0.0",
+  "type": "commonjs",
+  "description": "Scraper mikroposojil PHV (stalni finančni produkt za mala in srednja podjetja) za razpisnik-portal",
+  "dependencies": {
+    "apify": "^3.2.6",
+    "cheerio": "^1.0.0"
+  },
+  "scripts": {
+    "start": "node src/main.js"
+  }
+}

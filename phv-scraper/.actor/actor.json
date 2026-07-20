@@ -1,0 +1,9 @@
+{
+  "actorSpecification": 1,
+  "name": "phv-scraper",
+  "title": "PHV mikroposojila scraper",
+  "description": "Scraper mikroposojil PHV (stalni finančni produkt za mala in srednja podjetja)",
+  "version": "1.0",
+  "input": "./input_schema.json",
+  "dockerfile": "../Dockerfile"
+}
