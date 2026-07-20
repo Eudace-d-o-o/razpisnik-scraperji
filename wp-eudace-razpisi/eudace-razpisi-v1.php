@@ -1,17 +1,16 @@
 <?php
 /**
  * Plugin Name: Eudace — Razpisi tabela v1
- * Description: Shortcode [eudace_razpisi] — javna tabela razpisov (CPT "razpis") s filtri (tip, status, razpisovalec, rok), iskanjem in lead obrazcem. Strukturne podatke vleče iz portala (osnutki), tip/status iz kategorije. Server-side izris (SEO).
- * Version: 1.6
+ * Description: Shortcode [eudace_razpisi] — javna tabela razpisov, V CELOTI iz portala razpisnik (osnutki, kuriranje na portalu). Filtri, iskalnik po projektu, lead obrazec. Povezave na razpis.eu podstrani po naslovu.
+ * Version: 2.0
  * Author: Eudace
  */
 
 if (!defined('ABSPATH')) exit;
 
-/* Portal (leadi + metapodatki). Za TEST staging; ob objavi zamenjaj v 'https://razpisnik.eu'. */
+/* Portal = backend (odločitev 2026-07-20). Za TEST staging; ob objavi zamenjaj v 'https://razpisnik.eu'. */
 if (!defined('EUDACE_PORTAL_URL')) define('EUDACE_PORTAL_URL', 'https://staging.razpisnik.eu');
 
-/* normalizacija naziva (enaka kot portal osnutki-meta) */
 function eudace_norm($s) {
     $s = function_exists('mb_strtolower') ? mb_strtolower($s, 'UTF-8') : strtolower($s);
     $s = strtr($s, ['č'=>'c','ć'=>'c','š'=>'s','ž'=>'z','đ'=>'d']);
@@ -19,125 +18,94 @@ function eudace_norm($s) {
     return trim($s);
 }
 
-/* ACF/portal datum -> "d.m.Y" + timestamp; vrne [prikaz, ts] */
-function eudace_datum($raw) {
-    if (!$raw) return ['', 0];
-    if (preg_match('/^(\d{1,2})\.(\d{1,2})\.(\d{4})/', $raw, $m)) {
-        return [sprintf('%02d.%02d.%04d', $m[1], $m[2], $m[3]), mktime(0,0,0,$m[2],$m[1],$m[3])];
-    }
-    if (preg_match('/^(\d{4})(\d{2})(\d{2})$/', $raw, $m)) return ["$m[3].$m[2].$m[1]", mktime(0,0,0,$m[2],$m[3],$m[1])];
-    $ts = strtotime($raw);
-    return $ts ? [date('d.m.Y', $ts), $ts] : [esc_html($raw), 0];
-}
-
-/* metapodatki iz portala (razpisovalec/rok/status/sredstva), keširano 30 min, ključ = norm(naziv) */
-function eudace_portal_meta() {
-    $c = get_transient('eudace_razpisi_meta');
+/* podatki tabele iz portala (kurirani osnutki), keš 10 min */
+function eudace_tabela_podatki() {
+    $c = get_transient('eudace_tabela_v2');
     if ($c !== false) return $c;
-    $map = [];
-    $r = wp_remote_get(EUDACE_PORTAL_URL . '/api/javno/osnutki-meta', ['timeout' => 12]);
+    $out = [];
+    $r = wp_remote_get(EUDACE_PORTAL_URL . '/api/javno/tabela', ['timeout' => 12]);
     if (!is_wp_error($r) && wp_remote_retrieve_response_code($r) == 200) {
         $j = json_decode(wp_remote_retrieve_body($r), true);
-        if (!empty($j['meta'])) foreach ($j['meta'] as $m) {
-            if (!empty($m['kljuci'])) foreach ($m['kljuci'] as $k) { if (!isset($map[$k])) $map[$k] = $m; }
-        }
+        if (!empty($j['ok']) && !empty($j['razpisi'])) $out = $j['razpisi'];
     }
-    set_transient('eudace_razpisi_meta', $map, 30 * MINUTE_IN_SECONDS);
-    return $map;
+    set_transient('eudace_tabela_v2', $out, 10 * MINUTE_IN_SECONDS);
+    return $out;
 }
 
-function eudace_razpisi_shortcode($atts) {
-    $atts = shortcode_atts(['stevilo' => 400], $atts, 'eudace_razpisi');
-    $meta = eudace_portal_meta();
+/* povezave na razpis.eu podstrani: norm(naslov) -> permalink objavljenih "razpis" CPT */
+function eudace_wp_povezave() {
+    $c = get_transient('eudace_tabela_povezave');
+    if ($c !== false) return $c;
+    $map = [];
+    $q = new WP_Query(['post_type' => 'razpis', 'post_status' => 'publish', 'posts_per_page' => 500, 'no_found_rows' => true, 'fields' => 'ids']);
+    foreach ($q->posts as $pid) {
+        $map[eudace_norm(get_the_title($pid))] = get_permalink($pid);
+    }
+    set_transient('eudace_tabela_povezave', $map, 10 * MINUTE_IN_SECONDS);
+    return $map;
+}
+add_action('save_post_razpis', function(){ delete_transient('eudace_tabela_povezave'); delete_transient('eudace_tabela_v2'); });
 
-    $q = new WP_Query([
-        'post_type' => 'razpis', 'post_status' => 'publish',
-        'posts_per_page' => intval($atts['stevilo']), 'orderby' => 'date', 'order' => 'DESC', 'no_found_rows' => true,
-    ]);
+function eudace_razpisi_shortcode($atts) {
+    $podatki = eudace_tabela_podatki();
+    $povezave = eudace_wp_povezave();
 
     $razpisovalci = []; $zbrani = [];
+    $zdaj = time();
 
-    while ($q->have_posts()) {
-        $q->the_post();
-        $id = get_the_ID(); $naslov = get_the_title(); $url = get_permalink();
-
-        // tip + status iz kategorij — beri VSE taksonomije razpisa (ime taksonomije ni nujno 'kategorija')
-        $terms = [];
-        foreach (get_object_taxonomies('razpis') as $tx) {
-            if ($tx === 'post_tag') continue;
-            $tt = get_the_terms($id, $tx);
-            if ($tt && !is_wp_error($tt)) $terms = array_merge($terms, $tt);
-        }
-        $katImena = []; $jeKredit = false; $status = '';
-        foreach ($terms as $t) {
-            $katImena[] = $t->name;
-            $s = $t->slug . ' ' . $t->name;
-            if (stripos($s, 'kredit') !== false || stripos($s, 'posojil') !== false) $jeKredit = true;
-            if (stripos($s, 'arhiv') !== false || stripos($s, 'zaprt') !== false) $status = 'zaprt';
-            elseif (stripos($s, 'prihaj') !== false || stripos($s, 'napoved') !== false) $status = 'napovedan';
-        }
-        // tip ZANESLJIVO iz naziva (kredit/mikrokredit/posojilo) — kategorija le dodaten namig
-        if (preg_match('/kredit|posojil/iu', $naslov)) $jeKredit = true;
-        $tip = $jeKredit ? 'kredit' : 'nepovratna';
-        $tipLabel = $jeKredit ? 'Ugodni kredit' : 'Nepovratna sredstva';
-
-        // metapodatki iz portala
-        $m = isset($meta[eudace_norm($naslov)]) ? $meta[eudace_norm($naslov)] : null;
-        $razpisovalec = $m && $m['razpisovalec'] ? $m['razpisovalec'] : '';
+    foreach ($podatki as $p) {
+        $naslov = isset($p['naslov']) ? $p['naslov'] : '';
+        if ($naslov === '') continue;
+        $status = isset($p['status']) ? $p['status'] : 'odprt';
+        $tip = (isset($p['tip']) && $p['tip'] === 'kredit') ? 'kredit' : 'nepovratna';
+        $tipLabel = $tip === 'kredit' ? 'Ugodni kredit' : 'Nepovratna sredstva';
+        $razpisovalec = isset($p['razpisovalec']) ? (string) $p['razpisovalec'] : '';
         if ($razpisovalec) $razpisovalci[$razpisovalec] = true;
-        // rok: primarno iz ACF datum_oddaje razpisa (vsak ga ima), sicer iz portala
-        $rokAcf = function_exists('get_field') ? get_field('datum_oddaje', $id) : '';
-        list($rokPrikaz, $rokTs) = eudace_datum($rokAcf ? $rokAcf : ($m ? $m['rok'] : ''));
-        // portalski status (odprt/zaprt) prevlada nad kategorijo, če obstaja
-        if ($m && $m['status']) {
-            $ps = mb_strtolower($m['status'], 'UTF-8');
-            if (strpos($ps,'zaprt')!==false) $status='zaprt';
-            elseif (strpos($ps,'napoved')!==false || strpos($ps,'nacrtovan')!==false) $status='napovedan';
-            elseif (strpos($ps,'odprt')!==false) $status='odprt';
-        }
-        // če status še neznan, izpelji iz roka: pretekli -> zaprt, prihodnji -> odprt
-        if ($status === '' && $rokTs) $status = ($rokTs < time()) ? 'zaprt' : 'odprt';
+        $opis = isset($p['opis']) ? (string) $p['opis'] : '';
+
+        $rokPrikaz = isset($p['rok']) ? (string) $p['rok'] : '';
+        $rokTs = 0;
+        if (!empty($p['rok_iso'])) { $t = strtotime($p['rok_iso']); if ($t) $rokTs = $t; }
+
+        // povezava na razpis.eu podstran (če objavljena); sicer naslov brez povezave
+        $kljuc = isset($p['kljuc']) ? $p['kljuc'] : eudace_norm($naslov);
+        $url = isset($povezave[$kljuc]) ? $povezave[$kljuc] : '';
+
         $statusMap = ['odprt'=>'Odprt','zaprt'=>'Zaprt','napovedan'=>'Napovedan'];
-        $statusLabel = isset($statusMap[$status]) ? $statusMap[$status] : '—';
-        $statusCls = $status !== '' ? $status : 'nd';
+        $statusLabel = isset($statusMap[$status]) ? $statusMap[$status] : 'Odprt';
 
-        // iskalno besedilo vključuje tudi ACF opis/izvleček -> boljše ujemanje projektov
-        $opisTxt = '';
-        if (function_exists('get_field')) {
-            $opisTxt = wp_strip_all_tags((string) get_field('kratek_opis', $id) . ' ' . (string) get_field('izvlecek', $id));
-        }
-        $iskalno = mb_substr(eudace_norm($naslov . ' ' . implode(' ', $katImena) . ' ' . $razpisovalec . ' ' . $opisTxt), 0, 500);
-
-        // NUJNOST: odprti razpisi z bližnjim rokom dobijo "še X dni" oznako (spodbuja akcijo)
         $dniHtml = '';
-        if ($status === 'odprt' && $rokTs > time()) {
-            $dni = (int) ceil(($rokTs - time()) / 86400);
+        if ($status === 'odprt' && $rokTs > $zdaj) {
+            $dni = (int) ceil(($rokTs - $zdaj) / 86400);
             if ($dni <= 30) $dniHtml = '<span class="er-dni' . ($dni <= 7 ? ' er-dni-r' : '') . '">še ' . $dni . ' dni</span>';
         }
 
-        // CTA glede na status: odprt -> preveri upravičenost (bonbonček); zaprt/napovedan -> čakalna lista
-        if ($status === 'odprt' || $status === '') {
+        if ($status === 'odprt') {
             $ctaHtml = '<button type="button" class="er-cta" data-intent="povprasevanje" data-naziv="' . esc_attr($naslov) . '" data-url="' . esc_url($url) . '">Preveri upravičenost</button>';
         } else {
             $ctaHtml = '<button type="button" class="er-cta er-cta-o" data-intent="obvesti" data-naziv="' . esc_attr($naslov) . '" data-url="' . esc_url($url) . '">Obvesti me</button>';
         }
 
+        $nazivHtml = $url
+            ? '<a class="er-naziv" href="' . esc_url($url) . '">' . esc_html($naslov) . '</a>'
+            : '<span class="er-naziv er-naziv-nl">' . esc_html($naslov) . '</span>';
+
+        $iskalno = mb_substr(eudace_norm($naslov . ' ' . $opis . ' ' . $razpisovalec . ' ' . $tipLabel), 0, 500);
+
         $html = '<tr data-tip="' . $tip . '" data-status="' . $status . '" data-razpisovalec="' . esc_attr($razpisovalec) . '"'
             . ' data-rokts="' . $rokTs . '" data-txt="' . esc_attr($iskalno) . '">'
-            . '<td class="er-c-naziv er-' . $tip . '"><a class="er-naziv" href="' . esc_url($url) . '">' . esc_html($naslov) . '</a>'
-            . (!empty($katImena) ? '<div class="er-kat">' . esc_html(implode(' · ', array_slice($katImena,0,2))) . '</div>' : '') . '</td>'
+            . '<td class="er-c-naziv er-' . $tip . '">' . $nazivHtml
+            . ($opis ? '<div class="er-kat">' . esc_html($opis) . '</div>' : '') . '</td>'
             . '<td><span class="er-badge er-b-' . $tip . '">' . $tipLabel . '</span></td>'
             . '<td class="er-c-razp">' . ($razpisovalec ? esc_html($razpisovalec) : '—') . '</td>'
             . '<td class="er-c-rok">' . ($rokPrikaz ? esc_html($rokPrikaz) : '<span class="er-nd">—</span>') . $dniHtml . '</td>'
-            . '<td><span class="er-st er-st-' . $statusCls . '">' . $statusLabel . '</span></td>'
+            . '<td><span class="er-st er-st-' . $status . '">' . $statusLabel . '</span></td>'
             . '<td class="er-c-cta">' . $ctaHtml . '</td>'
             . '</tr>';
 
-        // razvrstitev: odprti (po roku naraščajoče, brez roka zadnji) -> napovedani -> zaprti
         $statusRed = ($status === 'zaprt') ? 2 : (($status === 'napovedan') ? 1 : 0);
         $zbrani[] = ['red' => $statusRed, 'rok' => $rokTs ? $rokTs : PHP_INT_MAX, 'html' => $html];
     }
-    wp_reset_postdata();
 
     usort($zbrani, function($a, $b) {
         if ($a['red'] !== $b['red']) return $a['red'] - $b['red'];
@@ -154,6 +122,15 @@ function eudace_razpisi_shortcode($atts) {
 <div class="er-wrap">
 <style>
 .er-wrap{--m:#1c5fa8;--md:#144a86;--navy:#16324f;--g:#f3b108;--gh:#d99f06;--tint:#f3f8fd;--rob:#d7e4f3;--siva:#5b6f83;--zel:#2f8f5b;--zelbg:#e7f4ec;--krbg:#e7f1fb;--amber:#a9741a;--amberbg:#fbf1dc;--sivbg:#eef1f5;color:var(--navy);font-family:inherit}
+.er-wrap .er-finder{background:linear-gradient(180deg,#eaf3fc,#f6f9fd);border:1px solid var(--rob);border-radius:12px;padding:16px 18px;margin:0 0 16px}
+.er-f-nas{font-size:16px;font-weight:800;color:var(--md);margin-bottom:10px}
+.er-wrap .er-finder textarea{width:100%!important;font:inherit!important;font-size:14.5px!important;padding:10px 12px!important;border:1px solid #cddcee!important;border-radius:8px!important;background:#fff!important;color:var(--navy)!important;box-sizing:border-box!important;resize:vertical;min-height:56px}
+.er-wrap .er-finder textarea:focus{outline:2px solid var(--m)!important;outline-offset:1px}
+.er-f-akc{display:flex;gap:10px;align-items:center;margin-top:10px;flex-wrap:wrap}
+.er-f-res{font-size:14px;font-weight:700;color:var(--md)}
+.er-f-cta{margin-top:12px;padding:12px 14px;background:#fff;border:1px solid var(--rob);border-radius:10px;font-size:14.5px;color:var(--navy);display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+tr.er-zadetek td.er-c-naziv{border-left-color:var(--g)!important}
+.er-oc{display:inline-block;margin-left:8px;font-size:11.5px;font-weight:700;padding:2px 8px;border-radius:20px;background:#fdf3d7;color:#8a6508;white-space:nowrap}
 .er-wrap .er-filtri{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin:0 0 18px;background:#f6f9fd;border:1px solid var(--rob);border-radius:12px;padding:12px 14px}
 .er-wrap .er-filtri input,.er-wrap .er-filtri select{font:inherit!important;font-size:14.5px!important;height:44px!important;padding:0 14px!important;border:1px solid #cddcee!important;border-radius:8px!important;background:#fff!important;color:var(--navy)!important;margin:0!important;box-shadow:none!important;max-width:none!important;line-height:1.2!important}
 .er-wrap .er-filtri input{flex:1 1 240px!important;min-width:200px!important}
@@ -171,14 +148,15 @@ function eudace_razpisi_shortcode($atts) {
 .er-c-naziv{border-left:4px solid var(--zel)}
 .er-c-naziv.er-kredit{border-left-color:var(--m)}
 .er-naziv{font-weight:700;color:var(--m);text-decoration:none}
-.er-naziv:hover{text-decoration:underline}
-.er-kat{color:var(--siva);font-size:12px;margin-top:3px}
+a.er-naziv:hover{text-decoration:underline}
+.er-naziv-nl{color:var(--navy)}
+.er-kat{color:var(--siva);font-size:12.5px;margin-top:3px}
 .er-badge{display:inline-block;font-size:12px;font-weight:700;padding:2px 9px;border-radius:20px;white-space:nowrap}
 .er-b-nepovratna{background:var(--zelbg);color:var(--zel)} .er-b-kredit{background:var(--krbg);color:var(--m)}
 .er-c-razp{color:var(--navy);font-size:13.5px}
 .er-c-rok{white-space:nowrap;font-variant-numeric:tabular-nums} .er-nd{color:var(--siva)}
 .er-st{display:inline-block;font-size:12px;font-weight:700;padding:2px 9px;border-radius:20px;white-space:nowrap}
-.er-st-odprt{background:var(--zelbg);color:var(--zel)} .er-st-zaprt{background:var(--sivbg);color:var(--siva)} .er-st-napovedan{background:var(--amberbg);color:var(--amber)} .er-st-nd{background:var(--sivbg);color:var(--siva)}
+.er-st-odprt{background:var(--zelbg);color:var(--zel)} .er-st-zaprt{background:var(--sivbg);color:var(--siva)} .er-st-napovedan{background:var(--amberbg);color:var(--amber)}
 .er-cta{background:var(--g);color:#fff;font-weight:700;font-size:14px;padding:9px 15px;border:none;border-radius:8px;cursor:pointer;white-space:nowrap}
 .er-cta:hover{background:var(--gh)}
 .er-cta-o{background:#fff;color:var(--m);border:2px solid var(--m);padding:7px 13px}
@@ -186,20 +164,11 @@ function eudace_razpisi_shortcode($atts) {
 .er-dni{display:inline-block;margin-left:8px;font-size:11.5px;font-weight:700;padding:2px 8px;border-radius:20px;background:var(--amberbg);color:var(--amber);white-space:nowrap}
 .er-dni-r{background:#fdecea;color:#c0392b}
 .er-pokazi{margin-top:10px;background:var(--m);color:#fff;border:none;border-radius:8px;padding:9px 16px;cursor:pointer;font-size:14px;font-weight:700}
-.er-wrap .er-finder{background:linear-gradient(180deg,#eaf3fc,#f6f9fd);border:1px solid var(--rob);border-radius:12px;padding:16px 18px;margin:0 0 16px}
-.er-f-nas{font-size:16px;font-weight:800;color:var(--md);margin-bottom:10px}
-.er-wrap .er-finder textarea{width:100%!important;font:inherit!important;font-size:14.5px!important;padding:10px 12px!important;border:1px solid #cddcee!important;border-radius:8px!important;background:#fff!important;color:var(--navy)!important;box-sizing:border-box!important;resize:vertical;min-height:56px}
-.er-wrap .er-finder textarea:focus{outline:2px solid var(--m)!important;outline-offset:1px}
-.er-f-akc{display:flex;gap:10px;align-items:center;margin-top:10px;flex-wrap:wrap}
-.er-f-res{font-size:14px;font-weight:700;color:var(--md)}
-.er-f-cta{margin-top:12px;padding:12px 14px;background:#fff;border:1px solid var(--rob);border-radius:10px;font-size:14.5px;color:var(--navy);display:flex;gap:12px;align-items:center;flex-wrap:wrap}
-tr.er-zadetek td.er-c-naziv{border-left-color:var(--g)!important}
-.er-oc{display:inline-block;margin-left:8px;font-size:11.5px;font-weight:700;padding:2px 8px;border-radius:20px;background:#fdf3d7;color:#8a6508;white-space:nowrap}
 .er-prazno{padding:24px;text-align:center;color:var(--siva);display:none}
 .er-modal{position:fixed;inset:0;background:rgba(16,40,70,.55);display:none;align-items:center;justify-content:center;z-index:99999;padding:16px}
 .er-modal.on{display:flex}
 .er-box{background:#fff;border-radius:14px;max-width:460px;width:100%;padding:24px;max-height:90vh;overflow:auto}
-.er-box h3{margin:0 0 4px;font-size:20px} .er-za{font-size:14px;color:var(--siva);margin:0 0 14px}
+.er-box h3{margin:0 0 4px;font-size:20px} .er-za{font-size:14px;color:var(--siva);margin:0 0 8px}
 .er-box label{display:block;font-size:13px;font-weight:600;margin:10px 0 4px}
 .er-box input,.er-box textarea{width:100%;font:inherit;font-size:15px;padding:10px 12px;border:1px solid #bcd3ea;border-radius:8px;box-sizing:border-box}
 .er-box textarea{min-height:66px}
@@ -270,10 +239,8 @@ document.getElementById('ersort').addEventListener('click',function(){sortDir=so
 var arr=rows.slice().sort(function(a,bb){var x=+a.getAttribute('data-rokts')||0,y=+bb.getAttribute('data-rokts')||0;
 if(x===0)return 1;if(y===0)return -1;return sortDir*(x-y);});arr.forEach(function(r){b.appendChild(r);});
 this.textContent='Rok oddaje '+(sortDir===1?'↑':'↓');});
-
 document.getElementById('ervse').addEventListener('click',function(){q.value='';tip.value='';stat.value='';razp.value='';f();});
 
-/* ISKALNIK PO PROJEKTU: opis -> tockovanje po prefiksih -> prerazporedi zadetke na vrh */
 var fin=document.getElementById('erfind'),fres=document.getElementById('erfres'),
 frst=document.getElementById('erfreset'),fcta=document.getElementById('erfcta'),
 fproj=document.getElementById('erproj'),zadnjiOpis='',topZadetki=[];
@@ -290,19 +257,18 @@ function najdi(){
   q.value='';tip.value='';stat.value='';razp.value='';
   var ocenjeni=[];
   rows.forEach(function(r){var txt=' '+r.getAttribute('data-txt')+' ',z=0;
-    pref.forEach(function(p){if(txt.indexOf(p)>-1)z++;});
+    pref.forEach(function(pp){if(txt.indexOf(pp)>-1)z++;});
     r.querySelectorAll('.er-oc').forEach(function(x){x.remove();});
     r.classList.remove('er-zadetek');
     ocenjeni.push({r:r,z:z});});
-  var zadetki=ocenjeni.filter(function(o){return o.z>0;}).sort(function(a,b){return b.z-a.z;});
+  var zadetki=ocenjeni.filter(function(o){return o.z>0;}).sort(function(a,bb){return bb.z-a.z;});
   topZadetki=zadetki.slice(0,5).map(function(o){return o.r.querySelector('.er-naziv').textContent;});
   if(!zadetki.length){rows.forEach(function(r){r.style.display='none';});c.textContent='0 razpisov';p.style.display='block';fres.textContent='Ni neposrednih zadetkov — pustite kontakt in svetovalec poišče možnosti za vas.';fcta.style.display='flex';frst.style.display='';return;}
   zadetki.forEach(function(o){o.r.classList.add('er-zadetek');
     var ocEl=document.createElement('span');ocEl.className='er-oc';ocEl.textContent='ujemanje';
     o.r.querySelector('.er-c-naziv').appendChild(ocEl);
-    b.appendChild(o.r);o.r.style.display='';});
+    o.r.style.display='';});
   ocenjeni.filter(function(o){return o.z===0;}).forEach(function(o){o.r.style.display='none';});
-  /* zadetki na vrh v pravem vrstnem redu */
   zadetki.slice().reverse().forEach(function(o){b.insertBefore(o.r,b.firstChild);});
   c.textContent=zadetki.length+' primernih razpisov';p.style.display='none';
   fres.textContent='✓ Našli smo '+zadetki.length+' primernih razpisov (označeni zgoraj).';
@@ -312,13 +278,7 @@ function najdi(){
 fin.addEventListener('click',najdi);
 frst.addEventListener('click',function(){fproj.value='';fres.textContent='';fcta.style.display='none';frst.style.display='none';zadnjiOpis='';topZadetki=[];
   rows.forEach(function(r){r.classList.remove('er-zadetek');r.querySelectorAll('.er-oc').forEach(function(x){x.remove();});});stat.value='odprt';f();});
-document.getElementById('erflead').addEventListener('click',function(){
-  cur={n:topZadetki[0]||'',u:'',i:'projekt'};
-  za.textContent=topZadetki.length?('Primerni razpisi: '+topZadetki.slice(0,3).join(' · ')):'';
-  nasl.textContent='Brezplačna preverba upravičenosti za vaš projekt';
-  pod.textContent='Svetovalec pregleda vaš projekt in vam predlaga najprimernejše razpise ter pogoje. Brez obveznosti.';
-  fo.querySelector('[name=projekt_opis]').value=zadnjiOpis;
-  msg.textContent='';m.classList.add('on');});
+
 var m=document.getElementById('erm'),za=document.getElementById('erza'),fo=document.getElementById('erf'),
 msg=document.getElementById('ermsg'),ss=document.getElementById('ers'),nasl=document.getElementById('ernaslov'),
 pod=document.getElementById('erpod'),cur={n:'',u:'',i:'povprasevanje'};
@@ -328,6 +288,13 @@ za.textContent=cur.n;msg.textContent='';
 if(cur.i==='obvesti'){nasl.textContent='Obvestite me, ko bo razpis odprt';pod.textContent='Sporočimo vam ob (ponovnem) odprtju in brezplačno preverimo, ali vaše podjetje izpolnjuje pogoje.';}
 else{nasl.textContent='Preverimo vašo upravičenost — brezplačno';pod.textContent='Naši svetovalci preverijo, ali vaše podjetje izpolnjuje pogoje razpisa, in vam svetujejo pri prijavi. Brez obveznosti.';}
 m.classList.add('on');}});
+document.getElementById('erflead').addEventListener('click',function(){
+  cur={n:topZadetki[0]||'',u:'',i:'projekt'};
+  za.textContent=topZadetki.length?('Primerni razpisi: '+topZadetki.slice(0,3).join(' · ')):'';
+  nasl.textContent='Brezplačna preverba upravičenosti za vaš projekt';
+  pod.textContent='Svetovalec pregleda vaš projekt in vam predlaga najprimernejše razpise ter pogoje. Brez obveznosti.';
+  fo.querySelector('[name=projekt_opis]').value=zadnjiOpis;
+  msg.textContent='';m.classList.add('on');});
 document.getElementById('erx').addEventListener('click',function(){m.classList.remove('on');});
 m.addEventListener('click',function(e){if(e.target===m)m.classList.remove('on');});
 fo.addEventListener('submit',function(e){e.preventDefault();
@@ -346,6 +313,3 @@ else{msg.style.color='#c0392b';msg.textContent=(x&&x.error)||'Napaka pri pošilj
     return ob_get_clean();
 }
 add_shortcode('eudace_razpisi', 'eudace_razpisi_shortcode');
-
-/* ob shranjevanju razpisa počisti keš metapodatkov */
-add_action('save_post_razpis', function(){ delete_transient('eudace_razpisi_meta'); });
