@@ -25,6 +25,9 @@ import * as cheerio from 'cheerio';
 const STRANI = [
     { url: 'https://www.aris-rs.si/objave/razpisi/odprti', tip: 'odprt' },
     { url: 'https://www.aris-rs.si/objave/nacrtovani-razpisi', tip: 'nacrtovan' },
+    // Zaključeni (zaprti) razpisi — večstranski arhiv (~60+ strani). Uporabnik želi videti
+    // tudi zaprte razpise (glej pogovor 2026-07-20). Status vedno "Zaprt" (glej razcleniKartice).
+    { url: 'https://www.aris-rs.si/objave/razpisi/zakljuceni', tip: 'zakljucen' },
 ];
 
 function danes() {
@@ -57,7 +60,8 @@ function razcleniKartice(html, tip) {
 
         // Status tag je DRUGI ".tags" blok v headerju (prvi je kategorija) — "ODPRT"/"NAČRTOVAN".
         const statusTag = $card.find('header .tags').eq(1).find('.tag').first().text().trim();
-        const status = /odprt/i.test(statusTag) ? 'Odprt' : /na.rtovan/i.test(statusTag) ? 'Načrtovan' : (tip === 'odprt' ? 'Odprt' : 'Načrtovan');
+        const status = tip === 'zakljucen' ? 'Zaprt'
+            : /odprt/i.test(statusTag) ? 'Odprt' : /na.rtovan/i.test(statusTag) ? 'Načrtovan' : (tip === 'odprt' ? 'Odprt' : 'Načrtovan');
 
         let rokPrijave = null, datumObjave = null, vrednost = null;
         $card.find('.razpisi-kartica__meta p').each((_, p) => {
@@ -88,7 +92,9 @@ const vsiRezultati = [];
 const videniUrl = new Set();
 
 const crawler = new PlaywrightCrawler({
-    requestHandlerTimeoutSecs: 120,
+    // Zaključeni razpisi imajo ~60+ strani — paginacija (klik "naprej" × N) traja dlje,
+    // zato večji timeout na zahtevo (privzetih 120s ni dovolj za cel arhiv).
+    requestHandlerTimeoutSecs: 600,
     maxRequestsPerCrawl: STRANI.length,
     async requestHandler({ page, request }) {
         const tip = request.userData.tip;
