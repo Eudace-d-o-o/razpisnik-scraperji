@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Eudace — Razpisi tabela v1
  * Description: Shortcode [eudace_razpisi] — javna tabela razpisov, V CELOTI iz portala razpisnik (osnutki, kuriranje na portalu). Filtri, iskalnik po projektu, lead obrazec. Povezave na razpis.eu podstrani po naslovu.
- * Version: 2.0
+ * Version: 2.2
  * Author: Eudace
  */
 
@@ -182,6 +182,7 @@ a.er-naziv:hover{text-decoration:underline}
 </style>
 
 <div class="er-finder">
+  <style>@keyframes er-spin{to{transform:rotate(360deg)}}.er-spin{display:inline-block;width:16px;height:16px;border:2px solid #e2b06a;border-top-color:transparent;border-radius:50%;animation:er-spin .7s linear infinite;flex:0 0 auto}</style>
   <div class="er-f-nas">🎯 Poiščite razpise za vašo naložbo</div>
   <div style="font-size:13px;color:#4a5568;margin:2px 0 8px">Vnesite davčno številko in osnovne podatke o naložbi — samodejno preverimo, kateri razpisi so za vas primerni (upoštevamo velikost, regijo in dejavnost podjetja).</div>
   <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px">
@@ -267,19 +268,20 @@ function poisci(){
   var d=(edav.value||'').replace(/\D/g,'');
   if(d.length!==8){fres.style.color='#c0392b';fres.textContent='Vnesite veljavno 8-mestno davčno številko.';return;}
   if(!etip.value){fres.style.color='#c0392b';fres.textContent='Izberite tip investicije.';return;}
-  fres.style.color='#4a5568';fres.textContent='Iščem primerne razpise…';fin.disabled=true;vodrez.innerHTML='';fcta.style.display='none';
+  fres.style.color='#4a5568';fres.textContent='';fin.disabled=true;fin.textContent='⏳ Iščem…';fcta.style.display='none';
+  vodrez.innerHTML='<div style="display:flex;align-items:center;gap:10px;padding:14px 16px;border:1px solid #e2e8f0;border-radius:8px;background:#fff;color:#4a5568;font-size:14px"><span class="er-spin"></span> Iščem primerne razpise za vašo naložbo… (nekaj sekund)</div>';
   zadnjiOpis=(etip.value+' '+(evis.value||'')+' '+(eop.value||'')).trim();
   fetch(PORTAL+'/api/javno/ujemanje-vodeno',{method:'POST',headers:{'Content-Type':'application/json'},
     body:JSON.stringify({dav:d,tip_investicije:etip.value,visina_investicije:evis.value,opis:eop.value})})
   .then(function(r){return r.json().then(function(x){return {status:r.status,body:x};});})
   .then(function(o){
-    fin.disabled=false;frst.style.display='';
-    if(o.status===429){fres.style.color='#c0392b';fres.textContent=(o.body&&o.body.error)||'Preveč zahtev — počakajte minuto.';return;}
+    fin.disabled=false;fin.textContent='Poišči primerne razpise';frst.style.display='';
+    if(o.status===429){vodrez.innerHTML='';fres.style.color='#c0392b';fres.textContent=(o.body&&o.body.error)||'Preveč zahtev — počakajte minuto.';return;}
     var x=o.body;
-    if(!x||!x.ok){fres.style.color='#c0392b';fres.textContent=(x&&x.error)||'Napaka pri iskanju.';return;}
+    if(!x||!x.ok){vodrez.innerHTML='';fres.style.color='#c0392b';fres.textContent=(x&&x.error)||'Napaka pri iskanju.';return;}
     var glava=x.podjetje?('Za '+esc(x.podjetje.naziv)+' ('+esc(x.podjetje.velikost)+(x.podjetje.kohezija?', '+esc(x.podjetje.kohezija):'')+')'):'Za vaše podjetje';
     if(!x.razpisi||!x.razpisi.length){
-      fres.style.color='#8a6428';fres.textContent=glava+' med objavljenimi razpisi trenutno ni neposrednega ujemanja — pustite kontakt in svetovalec preveri možnosti.';
+      vodrez.innerHTML='';fres.style.color='#8a6428';fres.textContent=glava+' med objavljenimi razpisi trenutno ni neposrednega ujemanja — pustite kontakt in svetovalec preveri možnosti.';
       topZadetki=[];fcta.style.display='flex';return;
     }
     topZadetki=x.razpisi.slice(0,5).map(function(rz){return rz.naziv;});
@@ -293,7 +295,7 @@ function poisci(){
         +'</div>';
     });
     vodrez.innerHTML=html;fcta.style.display='flex';
-  }).catch(function(){fin.disabled=false;fres.style.color='#c0392b';fres.textContent='Napaka pri povezavi.';});
+  }).catch(function(){fin.disabled=false;fin.textContent='Poišči primerne razpise';vodrez.innerHTML='';fres.style.color='#c0392b';fres.textContent='Napaka pri povezavi.';});
 }
 fin.addEventListener('click',poisci);
 frst.addEventListener('click',function(){edav.value='';etip.value='';evis.value='';eop.value='';fres.textContent='';vodrez.innerHTML='';fcta.style.display='none';frst.style.display='none';zadnjiOpis='';topZadetki=[];});
