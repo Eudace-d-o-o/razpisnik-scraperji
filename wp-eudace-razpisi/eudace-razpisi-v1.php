@@ -182,15 +182,31 @@ a.er-naziv:hover{text-decoration:underline}
 </style>
 
 <div class="er-finder">
-  <div class="er-f-nas">🔎 Opišite svoj projekt — poiščemo primerne razpise</div>
-  <textarea id="erproj" rows="2" placeholder="Npr.: Kupujemo nov CNC stroj za širitev proizvodnje, 15 zaposlenih, naložba okoli 200.000 €"></textarea>
+  <div class="er-f-nas">🎯 Poiščite razpise za vašo naložbo</div>
+  <div style="font-size:13px;color:#4a5568;margin:2px 0 8px">Vnesite davčno številko in osnovne podatke o naložbi — samodejno preverimo, kateri razpisi so za vas primerni (upoštevamo velikost, regijo in dejavnost podjetja).</div>
+  <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px">
+    <input id="erdav" type="text" inputmode="numeric" maxlength="8" placeholder="Davčna številka (8 mest) *" style="flex:1 1 180px;padding:9px 11px;border:1px solid #cfd6e0;border-radius:8px;font-size:14px">
+    <select id="ertipinv" style="flex:1 1 200px;padding:9px 11px;border:1px solid #cfd6e0;border-radius:8px;font-size:14px">
+      <option value="">Tip investicije… *</option>
+      <option>Gradnja / nepremičnina</option>
+      <option>Nakup stroja / opreme</option>
+      <option>RRI / razvoj</option>
+      <option>Digitalizacija</option>
+      <option>Zaposlovanje</option>
+      <option>Obratna sredstva</option>
+      <option>Zeleni prehod / URE</option>
+    </select>
+    <input id="ervis" type="text" placeholder="Višina investicije (npr. 200.000 €)" style="flex:1 1 180px;padding:9px 11px;border:1px solid #cfd6e0;border-radius:8px;font-size:14px">
+  </div>
+  <textarea id="eropis" rows="2" placeholder="Neobvezno: na kratko o naložbi (kaj kupujete/gradite)"></textarea>
   <div class="er-f-akc">
-    <button type="button" id="erfind" class="er-cta">Najdi primerne razpise</button>
+    <button type="button" id="erfind" class="er-cta">Poišči primerne razpise</button>
     <button type="button" id="erfreset" class="er-preklic" style="display:none">Ponastavi</button>
     <span class="er-f-res" id="erfres"></span>
   </div>
+  <div id="ervodrez" style="margin-top:10px"></div>
   <div class="er-f-cta" id="erfcta" style="display:none">
-    Želite, da svetovalec <b>brezplačno preveri upravičenost</b> za te razpise?
+    Želite, da svetovalec <b>brezplačno preveri upravičenost</b> in pomaga pri prijavi?
     <button type="button" class="er-cta" id="erflead">Pustite kontakt</button>
   </div>
 </div>
@@ -243,41 +259,44 @@ document.getElementById('ervse').addEventListener('click',function(){q.value='';
 
 var fin=document.getElementById('erfind'),fres=document.getElementById('erfres'),
 frst=document.getElementById('erfreset'),fcta=document.getElementById('erfcta'),
-fproj=document.getElementById('erproj'),zadnjiOpis='',topZadetki=[];
-var STOP={in:1,ali:1,za:1,na:1,je:1,se:1,so:1,bo:1,bi:1,da:1,ki:1,od:1,do:1,po:1,pri:1,pod:1,nad:1,iz:1,ter:1,nas:1,nam:1,smo:1,ima:1,imamo:1,zelimo:1,okoli:1,eur:1,evrov:1,podjetje:1,projekt:1,razpis:1,sredstva:1,nakup:1,novo:1,nov:1,nova:1};
-function normJs(s){return s.toLowerCase().replace(/[čć]/g,'c').replace(/š/g,'s').replace(/ž/g,'z').replace(/đ/g,'d').replace(/[^a-z0-9]+/g,' ').trim();}
-function najdi(){
-  var opis=fproj.value.trim();
-  if(opis.length<10){fres.textContent='Vpišite vsaj nekaj besed o projektu.';return;}
-  zadnjiOpis=opis;
-  var toks=normJs(opis).split(' ').filter(function(t){return t.length>=4&&!STOP[t];});
-  var pref=toks.map(function(t){return t.slice(0,Math.min(t.length,6));});
-  pref=pref.filter(function(v,i){return pref.indexOf(v)===i;});
-  if(!pref.length){fres.textContent='Opišite projekt bolj konkretno.';return;}
-  q.value='';tip.value='';stat.value='';razp.value='';
-  var ocenjeni=[];
-  rows.forEach(function(r){var txt=' '+r.getAttribute('data-txt')+' ',z=0;
-    pref.forEach(function(pp){if(txt.indexOf(pp)>-1)z++;});
-    r.querySelectorAll('.er-oc').forEach(function(x){x.remove();});
-    r.classList.remove('er-zadetek');
-    ocenjeni.push({r:r,z:z});});
-  var zadetki=ocenjeni.filter(function(o){return o.z>0;}).sort(function(a,bb){return bb.z-a.z;});
-  topZadetki=zadetki.slice(0,5).map(function(o){return o.r.querySelector('.er-naziv').textContent;});
-  if(!zadetki.length){rows.forEach(function(r){r.style.display='none';});c.textContent='0 razpisov';p.style.display='block';fres.textContent='Ni neposrednih zadetkov — pustite kontakt in svetovalec poišče možnosti za vas.';fcta.style.display='flex';frst.style.display='';return;}
-  zadetki.forEach(function(o){o.r.classList.add('er-zadetek');
-    var ocEl=document.createElement('span');ocEl.className='er-oc';ocEl.textContent='ujemanje';
-    o.r.querySelector('.er-c-naziv').appendChild(ocEl);
-    o.r.style.display='';});
-  ocenjeni.filter(function(o){return o.z===0;}).forEach(function(o){o.r.style.display='none';});
-  zadetki.slice().reverse().forEach(function(o){b.insertBefore(o.r,b.firstChild);});
-  c.textContent=zadetki.length+' primernih razpisov';p.style.display='none';
-  fres.textContent='✓ Našli smo '+zadetki.length+' primernih razpisov (označeni zgoraj).';
-  fcta.style.display='flex';frst.style.display='';
-  try{fetch(PORTAL+'/api/javno/ujemanje',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({opis:opis}),mode:'no-cors'});}catch(e){}
+edav=document.getElementById('erdav'),etip=document.getElementById('ertipinv'),
+evis=document.getElementById('ervis'),eop=document.getElementById('eropis'),
+vodrez=document.getElementById('ervodrez'),zadnjiOpis='',topZadetki=[];
+function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,function(ch){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[ch];});}
+function poisci(){
+  var d=(edav.value||'').replace(/\D/g,'');
+  if(d.length!==8){fres.style.color='#c0392b';fres.textContent='Vnesite veljavno 8-mestno davčno številko.';return;}
+  if(!etip.value){fres.style.color='#c0392b';fres.textContent='Izberite tip investicije.';return;}
+  fres.style.color='#4a5568';fres.textContent='Iščem primerne razpise…';fin.disabled=true;vodrez.innerHTML='';fcta.style.display='none';
+  zadnjiOpis=(etip.value+' '+(evis.value||'')+' '+(eop.value||'')).trim();
+  fetch(PORTAL+'/api/javno/ujemanje-vodeno',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({dav:d,tip_investicije:etip.value,visina_investicije:evis.value,opis:eop.value})})
+  .then(function(r){return r.json().then(function(x){return {status:r.status,body:x};});})
+  .then(function(o){
+    fin.disabled=false;frst.style.display='';
+    if(o.status===429){fres.style.color='#c0392b';fres.textContent=(o.body&&o.body.error)||'Preveč zahtev — počakajte minuto.';return;}
+    var x=o.body;
+    if(!x||!x.ok){fres.style.color='#c0392b';fres.textContent=(x&&x.error)||'Napaka pri iskanju.';return;}
+    var glava=x.podjetje?('Za '+esc(x.podjetje.naziv)+' ('+esc(x.podjetje.velikost)+(x.podjetje.kohezija?', '+esc(x.podjetje.kohezija):'')+')'):'Za vaše podjetje';
+    if(!x.razpisi||!x.razpisi.length){
+      fres.style.color='#8a6428';fres.textContent=glava+' med objavljenimi razpisi trenutno ni neposrednega ujemanja — pustite kontakt in svetovalec preveri možnosti.';
+      topZadetki=[];fcta.style.display='flex';return;
+    }
+    topZadetki=x.razpisi.slice(0,5).map(function(rz){return rz.naziv;});
+    fres.style.color='#2f8f5b';fres.textContent='✓ '+glava+' smo našli '+x.razpisi.length+' primernih razpisov:';
+    var html='';
+    x.razpisi.forEach(function(rz){
+      html+='<div style="border:1px solid #e2e8f0;border-radius:8px;padding:10px 12px;margin-bottom:8px;background:#fff">'
+        +'<div style="font-weight:600;color:#1a3a5c">'+esc(rz.naziv)+(rz.ocena?' <span style="font-size:12px;color:#2f8f5b">'+rz.ocena+'%</span>':'')+'</div>'
+        +(rz.obrazlozitev?'<div style="font-size:13px;color:#4a5568;margin-top:3px">'+esc(rz.obrazlozitev)+'</div>':'')
+        +(rz.rok?'<div style="font-size:12px;color:#8a94a6;margin-top:3px">Rok oddaje: '+esc(rz.rok)+'</div>':'')
+        +'</div>';
+    });
+    vodrez.innerHTML=html;fcta.style.display='flex';
+  }).catch(function(){fin.disabled=false;fres.style.color='#c0392b';fres.textContent='Napaka pri povezavi.';});
 }
-fin.addEventListener('click',najdi);
-frst.addEventListener('click',function(){fproj.value='';fres.textContent='';fcta.style.display='none';frst.style.display='none';zadnjiOpis='';topZadetki=[];
-  rows.forEach(function(r){r.classList.remove('er-zadetek');r.querySelectorAll('.er-oc').forEach(function(x){x.remove();});});stat.value='odprt';f();});
+fin.addEventListener('click',poisci);
+frst.addEventListener('click',function(){edav.value='';etip.value='';evis.value='';eop.value='';fres.textContent='';vodrez.innerHTML='';fcta.style.display='none';frst.style.display='none';zadnjiOpis='';topZadetki=[];});
 
 var m=document.getElementById('erm'),za=document.getElementById('erza'),fo=document.getElementById('erf'),
 msg=document.getElementById('ermsg'),ss=document.getElementById('ers'),nasl=document.getElementById('ernaslov'),
