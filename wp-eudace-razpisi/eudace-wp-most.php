@@ -1,8 +1,8 @@
 <?php
 /**
  * Plugin Name: Eudace — WP most (urejanje prek portala)
- * Description: Most med portalom Razpisnik in razpis.eu: (1) CPT "razpis" v REST za programsko urejanje; (2) meta endpoint za ACF/meta polja; (3) CTA blok na povzetkih; (4) statusna oznaka Odprt/Zaključen iz roka oddaje; (5) FAQ sekcija + FAQPage schema.org iz meta polja eudace_faq; (6) nastavitev promoviranih razpisov; (7) skrit hero (velika stock slika) na povzetkih — naslov postane kompakten pas. Vse nastavljivo prek REST, brez urejanja teme.
- * Version: 1.2
+ * Description: Most med portalom Razpisnik in razpis.eu: (1) CPT "razpis" v REST za programsko urejanje; (2) meta endpoint za ACF/meta polja; (3) CTA blok na povzetkih; (4) statusna oznaka Odprt/Zaključen iz roka oddaje; (5) FAQ sekcija + FAQPage schema.org iz meta polja eudace_faq; (6) nastavitev promoviranih razpisov; (7) stock foto v hero zamenjana z enobarvnim pasom (postavitev nedotaknjena — tema ima prosojno glavo/curtain, zato slike NE odstranimo iz toka). Vse nastavljivo prek REST, brez urejanja teme.
+ * Version: 1.3
  * Author: Eudace d.o.o.
  */
 
@@ -162,19 +162,22 @@ add_filter('the_content', function ($content) {
     return $content;
 }, 11);
 
-/* ── 7) Skrit hero na povzetkih razpisov ────────────────────────────────────
- * Velike stock slike (peščica istih na 100 objavah) ne nosijo vsebine in
- * potiskajo vsebino pod pregib. CSS skrije .big-preview in naslov spremeni v
- * kompakten temno moder pas (potrjeno vizualno 2026-07-22: .razpis-title je
- * position:absolute čez sliko → static + lastno ozadje). Featured image v bazi
- * OSTAJA (og:image za deljenje na družbenih omrežjih še vedno deluje).
- * Izklop: nastavitev eudace_most_skrij_hero = '0' (prek REST, brez nove verzije). */
+/* ── 7) Stock foto v hero → enobarvni pas ───────────────────────────────────
+ * Velike stock slike (peščica istih na 100 objavah) ne nosijo vsebine. POZOR
+ * (potrjeno vizualno 2026-07-22): tema Enfold ima PROSOJNO glavo + "curtain"
+ * (body.av-curtain-numeric) — vsebina je z negativnim robom potegnjena pod
+ * glavo, hero pa zapolni ta prostor. Če sliko damo display:none, se glava
+ * prekrije z naslovom IN spodaj nastane prazna luknja. Zato slike NE odstranimo
+ * iz toka: img damo visibility:hidden (ohrani višino kontejnerja = postavitev
+ * ostane cela), kontejner pa pobarvamo — hero postane čist enobarven pas z
+ * naslovom (position:absolute overlay teme ostane nedotaknjen). Featured image
+ * v bazi OSTAJA (og:image za družabno deljenje deluje). Izklop:
+ * eudace_most_skrij_hero = '0' (prek REST, brez nove verzije). */
 add_action('wp_head', function () {
     if (!is_singular('razpis') || get_option('eudace_most_skrij_hero', '1') !== '1') return;
     echo '<style id="eudace-most-hero">'
-       . 'body.single-razpis .big-preview.single-big{display:none!important;}'
-       . 'body.single-razpis .razpis-title{position:static!important;background:#123a63;padding:26px 30px 22px;margin-bottom:26px;border-radius:0 0 12px 12px;}'
-       . 'body.single-razpis .razpis-title h1{color:#fff;}'
+       . 'body.single-razpis .big-preview.single-big img{visibility:hidden!important;}'
+       . 'body.single-razpis .big-preview.single-big{background:#123a63!important;}'
        . '</style>' . "\n";
 });
 
