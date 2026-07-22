@@ -1,8 +1,8 @@
 <?php
 /**
  * Plugin Name: Eudace — WP most (urejanje prek portala)
- * Description: Most med portalom Razpisnik in razpis.eu: (1) CPT "razpis" v REST za programsko urejanje; (2) meta endpoint za ACF/meta polja; (3) CTA blok na povzetkih; (4) statusna oznaka Odprt/Zaključen iz roka oddaje; (5) FAQ sekcija + FAQPage schema.org iz meta polja eudace_faq; (6) nastavitev promoviranih razpisov; (7) stock foto v hero zamenjana z enobarvnim pasom (postavitev nedotaknjena — tema ima prosojno glavo/curtain, zato slike NE odstranimo iz toka). Vse nastavljivo prek REST, brez urejanja teme.
- * Version: 1.4
+ * Description: Most med portalom Razpisnik in razpis.eu: (1) CPT "razpis" v REST za programsko urejanje; (2) meta endpoint za ACF/meta polja; (3) CTA blok na povzetkih; (4) statusna oznaka (zlata pilula) vgrajena v hero; (5) FAQ sekcija + FAQPage schema.org iz meta polja eudace_faq; (6) nastavitev promoviranih razpisov; (7) hero: stock foto -> radialni preliv v blagovnih barvah (slika ostane v toku zaradi curtain postavitve teme). Vse nastavljivo prek REST, brez urejanja teme.
+ * Version: 1.5
  * Author: Eudace d.o.o.
  */
 
@@ -111,8 +111,7 @@ add_filter('the_content', function ($content) {
     if (!$rok) return $content;
 
     if ($rok['odprt']) {
-        $oznaka = '<div class="eudace-status" style="margin:0 0 22px;padding:11px 16px;border-radius:8px;background:#e8f6ee;border:1px solid #bfe3cd;color:#14713d;font-size:15px;font-weight:600;">'
-                . '🟢 Razpis je odprt — rok oddaje: ' . esc_html($rok['prikaz']) . '</div>';
+        $oznaka = '<div class="eudace-status eudace-status--odprt">Odprt · rok oddaje: ' . esc_html($rok['prikaz']) . '</div>';
     } else {
         $alt_url = home_url('/');
         $termi = get_the_terms(get_the_ID(), 'category-razpis');
@@ -120,9 +119,7 @@ add_filter('the_content', function ($content) {
             $povezava = get_term_link($termi[0]);
             if (!is_wp_error($povezava)) $alt_url = $povezava;
         }
-        $oznaka = '<div class="eudace-status" style="margin:0 0 22px;padding:11px 16px;border-radius:8px;background:#f3f4f6;border:1px solid #d8dbe0;color:#4b5563;font-size:15px;">'
-                . '⏹ <b>Ta razpis je zaključen</b> (rok je potekel ' . esc_html($rok['prikaz']) . '). '
-                . '<a href="' . esc_url($alt_url) . '" style="color:#437EBA;font-weight:600;">Poglejte aktualne razpise →</a></div>';
+        $oznaka = '<div class="eudace-status eudace-status--zaprt">Zaključen · rok potekel ' . esc_html($rok['prikaz']) . ' — <a href="' . esc_url($alt_url) . '">poglejte aktualne razpise →</a></div>';
     }
     return $oznaka . $content;
 }, 9);
@@ -176,11 +173,34 @@ add_filter('the_content', function ($content) {
  * v bazi OSTAJA (og:image za družabno deljenje deluje). Izklop:
  * eudace_most_skrij_hero = '0' (prek REST, brez nove verzije). */
 add_action('wp_head', function () {
+    if (!is_singular('razpis')) return;
+    $skrij = get_option('eudace_most_skrij_hero', '1') === '1';
+    echo '<style id="eudace-most-hero">';
+    if ($skrij) {
+        // Varianta C (izbrana z uporabnikom 2026-07-22): radialni preliv svetlo→temno modra z
+        // mehkim svetlobnim kotom zgoraj desno; slika ostane v toku (visibility:hidden) zaradi
+        // curtain postavitve teme.
+        echo 'body.single-razpis .big-preview.single-big img{visibility:hidden!important;}'
+           . 'body.single-razpis .big-preview.single-big{background:radial-gradient(120% 140% at 85% 0%,#5E97CB 0%,#3E76B0 40%,#244669 100%)!important;}';
+    }
+    // Statusna oznaka — pilula. Odprt = zlata (blagovni akcent), zaključen = nevtralna. Privzeto v
+    // vsebini; JS jo (ob skritem heroju) premakne v naslovni pas — glej wp_footer spodaj.
+    echo '.eudace-status{display:inline-block;margin:0 0 16px;padding:5px 13px;border-radius:6px;font-size:13px;font-weight:700;line-height:1.3;}'
+       . '.eudace-status--odprt{background:#EEAE0C;color:#412402;}'
+       . '.eudace-status--zaprt{background:#eceef1;color:#33475f;font-weight:600;}'
+       . '.eudace-status--zaprt a{color:#437EBA;}'
+       . 'body.single-razpis .razpis-title .eudace-status{margin:0 0 10px;}';
+    echo '</style>' . "\n";
+});
+
+// JS premakne statusno pilulo v naslovni pas (varianta C — status vgrajen v hero). Le ob skritem
+// heroju; sicer ostane na vrhu vsebine. Če elementa ni ali JS ne teče, pilula ostane v vsebini
+// (varen fallback). Geometrija potrjena 2026-07-22 (pilula znotraj hero pasu, brez prekrivanja).
+add_action('wp_footer', function () {
     if (!is_singular('razpis') || get_option('eudace_most_skrij_hero', '1') !== '1') return;
-    echo '<style id="eudace-most-hero">'
-       . 'body.single-razpis .big-preview.single-big img{visibility:hidden!important;}'
-       . 'body.single-razpis .big-preview.single-big{background:#437EBA!important;}'
-       . '</style>' . "\n";
+    echo '<script>document.addEventListener("DOMContentLoaded",function(){'
+       . 'var s=document.querySelector(".eudace-status"),t=document.querySelector(".razpis-title");'
+       . 'if(s&&t){t.insertBefore(s,t.firstChild);}});</script>' . "\n";
 });
 
 /* ── FAQPage schema.org (JSON-LD) ───────────────────────────────────────────
