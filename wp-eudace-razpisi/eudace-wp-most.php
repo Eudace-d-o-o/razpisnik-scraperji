@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Eudace — WP most (urejanje prek portala)
  * Description: Most med portalom Razpisnik in razpis.eu: (1) CPT "razpis" v REST za programsko urejanje; (2) meta endpoint za ACF/meta polja; (3) CTA blok na povzetkih; (4) statusna oznaka Odprt/Zaključen iz roka oddaje; (5) FAQ sekcija + FAQPage schema.org iz meta polja eudace_faq; (6) nastavitev promoviranih razpisov; (7) stock foto v hero zamenjana z enobarvnim pasom (postavitev nedotaknjena — tema ima prosojno glavo/curtain, zato slike NE odstranimo iz toka). Vse nastavljivo prek REST, brez urejanja teme.
- * Version: 1.3
+ * Version: 1.4
  * Author: Eudace d.o.o.
  */
 
@@ -122,7 +122,7 @@ add_filter('the_content', function ($content) {
         }
         $oznaka = '<div class="eudace-status" style="margin:0 0 22px;padding:11px 16px;border-radius:8px;background:#f3f4f6;border:1px solid #d8dbe0;color:#4b5563;font-size:15px;">'
                 . '⏹ <b>Ta razpis je zaključen</b> (rok je potekel ' . esc_html($rok['prikaz']) . '). '
-                . '<a href="' . esc_url($alt_url) . '" style="color:#1d5087;font-weight:600;">Poglejte aktualne razpise →</a></div>';
+                . '<a href="' . esc_url($alt_url) . '" style="color:#437EBA;font-weight:600;">Poglejte aktualne razpise →</a></div>';
     }
     return $oznaka . $content;
 }, 9);
@@ -153,10 +153,12 @@ add_filter('the_content', function ($content) {
         $besedilo = esc_html(get_option('eudace_most_cta_besedilo'));
         $gumb = esc_html(get_option('eudace_most_cta_gumb'));
         $url = esc_url(get_option('eudace_most_cta_url', '/kontakt/'));
-        $content .= '<div class="eudace-cta" style="margin:36px 0 8px;padding:26px 28px;border-radius:12px;background:#123a63;background:linear-gradient(135deg,#123a63,#1d5087);color:#fff;">'
+        // Blagovne barve Eudace: modra #437EBA, gumbi #EEAE0C (temno besedilo na gumbu zaradi
+        // kontrasta — bela na zlati bi bila neberljiva).
+        $content .= '<div class="eudace-cta" style="margin:36px 0 8px;padding:26px 28px;border-radius:12px;background:#437EBA;background:linear-gradient(135deg,#437EBA,#2f5f92);color:#fff;">'
                   . '<div style="font-size:21px;font-weight:700;margin-bottom:8px;color:#fff;">' . $naslov . '</div>'
-                  . '<div style="font-size:15px;line-height:1.55;color:#dbe6f2;margin-bottom:18px;">' . $besedilo . '</div>'
-                  . '<a href="' . $url . '" style="display:inline-block;background:#F0912A;color:#fff;font-weight:700;font-size:15px;padding:12px 26px;border-radius:8px;text-decoration:none;">' . $gumb . '</a>'
+                  . '<div style="font-size:15px;line-height:1.55;color:#e6eff8;margin-bottom:18px;">' . $besedilo . '</div>'
+                  . '<a href="' . $url . '" style="display:inline-block;background:#EEAE0C;color:#1a2e47;font-weight:700;font-size:15px;padding:12px 26px;border-radius:8px;text-decoration:none;">' . $gumb . '</a>'
                   . '</div>';
     }
     return $content;
@@ -177,7 +179,7 @@ add_action('wp_head', function () {
     if (!is_singular('razpis') || get_option('eudace_most_skrij_hero', '1') !== '1') return;
     echo '<style id="eudace-most-hero">'
        . 'body.single-razpis .big-preview.single-big img{visibility:hidden!important;}'
-       . 'body.single-razpis .big-preview.single-big{background:#123a63!important;}'
+       . 'body.single-razpis .big-preview.single-big{background:#437EBA!important;}'
        . '</style>' . "\n";
 });
 
