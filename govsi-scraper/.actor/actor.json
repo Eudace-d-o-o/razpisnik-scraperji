@@ -1,0 +1,9 @@
+{
+  "actorSpecification": 1,
+  "name": "govsi-scraper",
+  "title": "Gov.si ministrstva scraper",
+  "description": "Scraper javnih razpisov ministrstev RS (gov.si/zbirke/javne-objave)",
+  "version": "1.0",
+  "input": "./input_schema.json",
+  "dockerfile": "../Dockerfile"
+}
