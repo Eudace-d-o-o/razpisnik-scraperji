@@ -2,10 +2,22 @@
  * Gov.si — javne objave ministrstev (javni razpisi) — scraper (Apify actor).
  *
  * Vir: https://www.gov.si/zbirke/javne-objave/?status=*&titleref=&type=2&year=0&nrOfItems=100&start=N
- *   type=2 = javni razpisi (potrjeno na strani); status=* = vsi statusi. Stran je strežniško
- *   izrisana (plain fetch + cheerio, brez brskalnika). Paginacija prek 'start=' (0,100,200,...) —
- *   potrjeno 2026-07-22: ~13 strani (~1250 zadetkov). Samo DVA statusa obstajata na tej strani:
- *   "V teku" in "Zaključeno" (ni "Napovedano" — potrjeno z uporabnikom).
+ *   type=2 = javni razpisi (potrjeno v izbirniku "Tip" — 1=Javni natečaji, 2=Javni razpisi,
+ *   4=Javna naročila); status=* = vsi statusi. Stran je strežniško izrisana (plain fetch +
+ *   cheerio, brez brskalnika). Paginacija prek 'start=' (0,100,200,...).
+ *
+ *   FILTER PO INSTITUCIJI (dogovor z uporabnikom 2026-07-22 — brez filtra je nabor prevelik in
+ *   vsebuje veliko za Eudace nerelevantnih objav: štipendije, vrtci/šole, priznanja...). Ujema se
+ *   z izbirnikom "Institucija" prek 'publisher[]=<ID>' (VEČ parametrov hkrati = OR, potrjeno):
+ *     4452 Ministrstvo za gospodarstvo, delo in šport
+ *     4450 Ministrstvo za infrastrukturo in energetiko
+ *     4453 Ministrstvo za kmetijstvo (ID zajame TUDI stare vnose z nazivom "Ministrstvo za
+ *          kmetijstvo, gozdarstvo in prehrano" — isti interni ID, potrjeno 2026-07-22)
+ *     4447 Ministrstvo za notranje zadeve in javno upravo
+ *       30 Ministrstvo za obrambo
+ *       31 Ministrstvo za okolje in prostor
+ *     3745 Ministrstvo za zunanje in evropske zadeve
+ *   Samo DVA statusa obstajata na tej strani: "V teku" in "Zaključeno" (ni "Napovedano").
  *
  *   Vsaka vrstica (tr) v table.list-table.tender-list-table:
  *     td.td-id          -> Šifra (identifikator)
@@ -27,7 +39,11 @@ const cheerio = require('cheerio');
 
 const BAZA = 'https://www.gov.si';
 const KORAK = 100;
-const MAX_STRANI = 30; // varovalka (dejansko ~13 strani / ~1250 zadetkov)
+const MAX_STRANI = 15; // varovalka
+
+// Institucije, relevantne za Eudace (sofinanciranje/krediti za podjetja) — dogovor z
+// uporabnikom 2026-07-22, glej komentar zgoraj za imena/ID-je.
+const INSTITUCIJE = [4452, 4450, 4453, 4447, 30, 31, 3745];
 
 const STATUS_MAPA = { 'v teku': 'Odprt', 'zaključeno': 'Zaprt' };
 
@@ -38,7 +54,8 @@ function danes() {
 const cist = (t) => String(t || '').replace(/\s+/g, ' ').trim();
 
 async function preberiStran(start) {
-    const url = `${BAZA}/zbirke/javne-objave/?status=*&titleref=&type=2&year=0&nrOfItems=${KORAK}&start=${start}`;
+    const publisherQS = INSTITUCIJE.map((id) => `publisher%5B%5D=${id}`).join('&');
+    const url = `${BAZA}/zbirke/javne-objave/?status=*&titleref=&type=2&year=0&${publisherQS}&nrOfItems=${KORAK}&start=${start}`;
     const r = await fetch(url, { headers: { Accept: 'text/html', 'User-Agent': 'Mozilla/5.0 (razpisnik-portal scraper)' } });
     if (!r.ok) throw new Error(`gov.si HTTP ${r.status} (start=${start})`);
     return cheerio.load(await r.text());
