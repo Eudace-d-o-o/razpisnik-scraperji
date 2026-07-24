@@ -14,6 +14,7 @@ import { CheerioCrawler, log } from 'crawlee';
 import { PDFParse } from 'pdf-parse';
 import mammoth from 'mammoth';
 import * as cheerio from 'cheerio';
+import { ProxyAgent } from 'undici';
 
 await Actor.init();
 
@@ -170,6 +171,163 @@ if (vir === 'EU' || url.includes('europa.eu')) {
             }
         } catch(e) {
             log.warning(`[EU Detail] API napaka: ${e.message}`);
+        }
+    }
+}
+
+// ─── HR (eufondovi.gov.hr): JSON API (MIS) ─────────────────────────────────────
+// eu-pozivi.eufondovi.gov.hr/calls/?poziv=<Oznaka> je JS-rendered SPA (React) — generični
+// CheerioCrawler spodaj dobi samo prazno HTML lupino. Podatki so na javnem MIS API-ju
+// (isti, ki ga za SEZNAM/ingestion uporablja hr-eufondovi-scraper), zato tu naredimo
+// enak API-klic in poiščemo ujemajoč zapis po Oznaka (query param ?poziv=) iz URL-ja.
+if (!rezultat && (vir === 'HR' || vir === 'HREU' || url.includes('eufondovi.gov.hr'))) {
+    const mPoziv = url.match(/[?&]poziv=([^&#]+)/i);
+    const oznaka = mPoziv ? decodeURIComponent(mPoziv[1]) : null;
+    if (!oznaka) {
+        log.warning('[HR Detail] URL ne vsebuje ?poziv=<Oznaka> — ne morem najti zapisa v MIS API-ju');
+    } else {
+        const apiUrl = 'https://ekohezija.gov.hr/MISPublicApi/poziv/browse/?status=&op=kk&top=2000&skip=0&fond=&vpd=&podrucje=&tijelo';
+        log.info(`[HR Detail] MIS API: ${apiUrl} (iščem Oznaka/ID=${oznaka})`);
+        try {
+            // ekohezija.gov.hr blokira ne-hrvaške IP-je (Apify DC IP -> Connect Timeout) — enak
+            // problem kot pri hr-eufondovi-scraper (seznam/ingestion), zato enak RESIDENTIAL
+            // proxy s countryCode 'HR'.
+            const proxyConfig = await Actor.createProxyConfiguration({ groups: ['RESIDENTIAL'], countryCode: 'HR' });
+            const proxyUrl = await proxyConfig.newUrl();
+            const dispatcher = new ProxyAgent({
+                uri: proxyUrl,
+                requestTls: { rejectUnauthorized: false },
+                headersTimeout: 60000,
+                bodyTimeout: 60000,
+            });
+
+            const r = await fetch(apiUrl, {
+                dispatcher,
+                headers: {
+                    Accept: 'application/json',
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36',
+                    Referer: 'https://eu-pozivi.eufondovi.gov.hr/',
+                    Origin: 'https://eu-pozivi.eufondovi.gov.hr',
+                },
+            });
+            if (!r.ok) {
+                log.warning(`[HR Detail] MIS API HTTP ${r.status}`);
+            } else {
+                const j = await r.json();
+                const zapisi = Array.isArray(j.Records) ? j.Records : [];
+                const d = zapisi.find(z => z.Oznaka === oznaka) || zapisi.find(z => z.ID === oznaka);
+
+                if (!d) {
+                    log.warning(`[HR Detail] Zapis z Oznaka/ID="${oznaka}" ni najden med ${zapisi.length} zapisi (verjetno zaprt razpis, ki ga status filter ne zajema)`);
+                } else {
+                    const cist = (t) => String(t == null ? '' : t).replace(/\s+/g, ' ').trim();
+                    const evr = (v) => {
+                        const n = Number(v);
+                        return (!n || n <= 0) ? '' : n.toLocaleString('hr-HR', { maximumFractionDigits: 0 }) + ' EUR';
+                    };
+                    const isoVDatum = (v) => {
+                        if (!v) return null;
+                        const m = String(v).substring(0, 10).match(/^(\d{4})-(\d{2})-(\d{2})$/);
+                        return m ? `${m[3]}.${m[2]}.${m[1]}` : null;
+                    };
+
+                    // Sestavi vsebino iz vseh razpoložljivih besedilnih/finančnih polj — enako bogato
+                    // kot pri EU branchu zgoraj (namen, upravičenci, pogoji, zneski, rok).
+                    const deli = [];
+                    if (d.CiljPoziva) deli.push(`Cilj poziva:\n${cist(d.CiljPoziva)}`);
+                    if (d.SvrhaPoziva) deli.push(`Svrha poziva:\n${cist(d.SvrhaPoziva)}`);
+                    if (d.Predmet) deli.push(`Predmet poziva:\n${cist(d.Predmet)}`);
+                    if (d.Podrucja) deli.push(`Područja:\n${cist(d.Podrucja)}`);
+                    if (d.PrihvatljiviPrijavitelji || d.Prijavitelji) {
+                        deli.push(`Prihvatljivi prijavitelji:\n${cist(d.PrihvatljiviPrijavitelji || d.Prijavitelji)}`);
+                    }
+                    const ukupno = evr(d.UkupnaBespovratnaSredstva);
+                    const najniza = evr(d.NajnizaVrijednostPotpore);
+                    const najvisa = evr(d.NajvisaVrijednostPotpore);
+                    const zneskiDeli = [];
+                    if (ukupno) zneskiDeli.push(`Ukupna bespovratna sredstva: ${ukupno}`);
+                    if (najniza) zneskiDeli.push(`Najniža vrijednost potpore: ${najniza}`);
+                    if (najvisa) zneskiDeli.push(`Najviša vrijednost potpore: ${najvisa}`);
+                    if (zneskiDeli.length) deli.push(zneskiDeli.join('\n'));
+                    const rokIso = isoVDatum(d.RokZaPodnosenjeProjektnihPrijava);
+                    if (rokIso) deli.push(`Rok za podnošenje projektnih prijava: ${rokIso}`);
+                    const datumObjave = isoVDatum(d.DatumObjavePoziva);
+                    if (datumObjave) deli.push(`Datum objave poziva: ${datumObjave}`);
+                    if (d.NadleznoTijeloNaziv) deli.push(`Nadležno tijelo: ${cist(d.NadleznoTijeloNaziv)}`);
+                    if (d.VrstaPostupkaDodjeleNaziv) deli.push(`Vrsta postupka dodjele: ${cist(d.VrstaPostupkaDodjeleNaziv)}`);
+                    if (d.InvesticijskiFondNaziv) deli.push(`Investicijski fond: ${cist(d.InvesticijskiFondNaziv)}`);
+                    if (d.OperativniProgramNaziv) deli.push(`Operativni program: ${cist(d.OperativniProgramNaziv)}`);
+                    if (d.Sazetak) deli.push(`Sažetak:\n${cist(d.Sazetak)}`);
+
+                    // Priloge/dokumenti (Obrasci, Prilozi, UputeZaPrijavitelje, DokumentacijaZaIzravnuDodjelu,
+                    // Obavijesti, PitanjaIOdgovoriPrilozi) — v testiranih zapisih so bili null, a struktura
+                    // API-ja jih predvidi kot sezname objektov s PDF/DOCX povezavami (enako načelo kot pri
+                    // SPS/ARIS: prioritetno prenesi in preberi vsebino). Podpremo splošno obliko (seznam
+                    // objektov z url/Url/putanja/naziv poljem ALI seznam golih string URL-jev).
+                    const dokViri = [];
+                    let dokVsebina = '';
+                    const prilogeViri = [
+                        ['Obrasci', d.Obrasci],
+                        ['Prilozi', d.Prilozi],
+                        ['Upute za prijavitelje', d.UputeZaPrijavitelje],
+                        ['Dokumentacija za izravnu dodjelu', d.DokumentacijaZaIzravnuDodjelu],
+                        ['Obavijesti', d.Obavijesti],
+                        ['Pitanja i odgovori — prilozi', d.PitanjaIOdgovoriPrilozi],
+                    ];
+                    if (!preskociPdf) {
+                        const posamezneDatoteke = [];
+                        for (const [skupina, seznam] of prilogeViri) {
+                            if (!Array.isArray(seznam)) continue;
+                            for (const el of seznam) {
+                                let docUrl = null, ime = skupina;
+                                if (typeof el === 'string') docUrl = el;
+                                else if (el && typeof el === 'object') {
+                                    docUrl = el.Url || el.url || el.Putanja || el.putanja || el.Link || el.link || el.DownloadUrl || null;
+                                    ime = el.Naziv || el.naziv || el.Ime || el.FileName || skupina;
+                                }
+                                if (docUrl) {
+                                    try { docUrl = new URL(docUrl, 'https://eu-pozivi.eufondovi.gov.hr/').toString(); } catch { /* obdrži kot je */ }
+                                    posamezneDatoteke.push({ url: docUrl, tekst: `${skupina} — ${ime}` });
+                                }
+                            }
+                        }
+                        if (posamezneDatoteke.length) {
+                            log.info(`[HR Detail] Najdenih prilog v API zapisu: ${posamezneDatoteke.length}`);
+                            for (const l of posamezneDatoteke.slice(0, 8)) {
+                                const txt = await prebrDokument(l.url);
+                                if (txt && txt.length > 50) {
+                                    const cisto = txt.replace(/\s+/g, ' ').trim();
+                                    dokVsebina += `\n\n=== DOKUMENT: ${l.tekst} ===\n${cisto}`;
+                                    dokViri.push(l.url);
+                                }
+                            }
+                        }
+                    }
+
+                    const statusIzvor = (d.MisStatus || d.Status || '').toLowerCase();
+                    let status = 'Ni razvidno';
+                    if (statusIzvor.includes('otvoren')) status = 'Odprt';
+                    else if (statusIzvor.includes('zatvoren') || statusIzvor.includes('zaključen') || statusIzvor.includes('zakljucen')) status = 'Zaprt';
+                    else if (statusIzvor.includes('priprem') || statusIzvor.includes('najav')) status = 'Napovedan';
+
+                    const VARNOSTNI_LIMIT = 200000;
+                    const vsebina = (deli.join('\n\n') + (dokVsebina || '')).trim();
+
+                    rezultat = {
+                        url,
+                        naziv: cist(d.Naziv) || oznaka,
+                        metaOpis: cist(d.CiljPoziva || d.Sazetak || '').substring(0, 500),
+                        vsebina: vsebina.substring(0, VARNOSTNI_LIMIT),
+                        status,
+                        vir: 'HR',
+                        pdfViri: dokViri,
+                        vsiDokumenti: dokViri.map(u => ({ url: u, tekst: u, klasifikacija: klasificirajPovezavo(u) })),
+                    };
+                    log.info(`[HR Detail] OK: ${rezultat.naziv.substring(0, 60)} — vsebina ${vsebina.length} znakov, dokumentov prebranih: ${dokViri.length}`);
+                }
+            }
+        } catch (e) {
+            log.warning(`[HR Detail] Napaka: ${e.message}`);
         }
     }
 }
