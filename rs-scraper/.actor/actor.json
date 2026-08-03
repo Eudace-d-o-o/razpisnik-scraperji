@@ -1,0 +1,9 @@
+{
+  "actorSpecification": 1,
+  "name": "rs-scraper",
+  "title": "Srbija — javni pozivi",
+  "description": "Scraper srbskih javnih pozivov (Ministarstvo privrede, RAS)",
+  "version": "1.0",
+  "input": "./input_schema.json",
+  "dockerfile": "../Dockerfile"
+}

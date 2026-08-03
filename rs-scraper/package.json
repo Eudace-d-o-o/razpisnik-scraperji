@@ -1,0 +1,14 @@
+{
+  "name": "rs-scraper",
+  "version": "1.0.1",
+  "type": "commonjs",
+  "description": "Scraper srbskih javnih pozivov (Ministarstvo privrede, RAS, Fond za inovacionu delatnost) za razpisnik-portal",
+  "dependencies": {
+    "apify": "^3.2.6",
+    "cheerio": "^1.0.0-rc.12",
+    "undici": "^6.19.8"
+  },
+  "scripts": {
+    "start": "node src/main.js"
+  }
+}
