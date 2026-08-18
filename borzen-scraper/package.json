@@ -2,10 +2,9 @@
   "name": "borzen-scraper",
   "version": "1.0.0",
   "type": "commonjs",
-  "description": "Scraper javnih pozivov/subvencij Borzen (samo za pravne osebe/podjetja) za razpisnik-portal",
+  "description": "Scraper javnih pozivov/razpisov Borzen (pravne osebe) za razpisnik-portal — sledi povezavam s zbirnih strani na posamezne pozive",
   "dependencies": {
     "apify": "^3.2.6",
-    "crawlee": "^3.11.5",
     "cheerio": "^1.0.0"
   },
   "scripts": {
