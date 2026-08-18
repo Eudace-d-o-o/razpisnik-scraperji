@@ -58,6 +58,13 @@ const VSTOPNE_STRANI = [
     { url: `${BAZA}/sl-si/podpore-za-zelene-investicije/subvencije-za-hranilnike-elektricne-energije/subvencije-za-hranilnike-elektricne-energije-2026`, naziv: 'JP PS SUB-HEE-PO26 — hranilniki električne energije 2026' },
     { url: `${BAZA}/sl-si/podpore-za-zelene-investicije/subvencije-za-hranilnike-elektricne-energije/subvencije-za-hranilnike-elektricne-energije-za-pravne-osebe`, naziv: 'JP REPWR SUB-HEE-PO25 — hranilniki električne energije za pravne osebe' },
     // ── Mobilnost ─────────────────────────────────────────────────────────────
+    // E-vozila: kazalo `/subvencije-za-nakup-elektricnih-vozil` povezav do pozivov NIMA v
+    // seznamskih elementih (v `li` so samo povezave do statistike oddanih vlog), zato ga NE
+    // beremo kot kazalo — obe strani poziva navedemo neposredno.
+    // Izmerjeno 18. 8. 2026: JP SUB-EV26 je odprt (do porabe sredstev) in izrecno velja tudi za
+    // pravne osebe in s.p.; brez tega vnosa ga portal sploh ni zajel.
+    { url: `${BAZA}/sl-si/podpore-za-mobilnost/subvencije-za-nakup-elektricnih-vozil/subvencije-za-e-vozila-fizicnih-in-pravnih-oseb-2026`, naziv: 'JP SUB-EV26 — spodbude za električna vozila (fizične in pravne osebe)' },
+    { url: `${BAZA}/sl-si/podpore-za-mobilnost/subvencije-za-nakup-elektricnih-vozil/subvencije-za-nakup-elektricnih-vozil-pravne-osebe-2026`, naziv: 'JP REPWR SUB-EVPO26 — električna vozila za pravne osebe' },
     { url: `${BAZA}/sl-si/podpore-za-mobilnost/subvencije-za-nakup-elektricnih-polnilnih-mest-za-ev-2026`, naziv: 'Subvencije za EV polnilna mesta 2026' },
     { url: `${BAZA}/sl-si/podpore-za-mobilnost/subvencije-za-polnilne-parke-ob-omrezju-ten-t`, naziv: 'Subvencije za polnilne parke ob omrežju TEN-T' },
     { url: `${BAZA}/sl-si/podpore-za-mobilnost/subvencije-za-polnilno-infrastrukturo-izven-omrezja-ten-t`, naziv: 'Subvencije za polnilno infrastrukturo izven omrežja TEN-T' },
