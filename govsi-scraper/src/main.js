@@ -36,6 +36,8 @@
  */
 const { Actor, log } = require('apify');
 const cheerio = require('cheerio');
+// Napovedani razpisi iz vladnih sporočil za javnost (20. 8. 2026) — glej src/napovedi.js, zakaj.
+const { zajemiNapovedi } = require('./napovedi');
 
 const BAZA = 'https://www.gov.si';
 const KORAK = 100;
@@ -104,5 +106,22 @@ Actor.main(async () => {
     }
 
     log.info(`[gov.si] zajetih ${rezultati.length} javnih razpisov ministrstev`);
+
+    // ── NAPOVEDI IZ VLADNIH SPOROČIL ────────────────────────────────────────────────────────
+    // Ločena pot, ker bere DRUG vir (gov.si/novice) in daje zapise DRUGE vrste: napoved brez
+    // roka in brez šifre. Neuspeh te poti NE sme podreti glavnega zajema — objavljeni razpisi so
+    // produkt, napovedi so dodatek. Zakaj sploh obstaja, piše v src/napovedi.js.
+    try {
+        const napovedi = await zajemiNapovedi(log);
+        for (const n of napovedi) {
+            if (videni.has(n.URL)) continue;
+            videni.add(n.URL);
+            rezultati.push(n);
+        }
+    } catch (e) {
+        log.warning(`[gov.si] Zajem napovedi ni uspel (${e.message}) — objavljeni razpisi ostanejo.`);
+    }
+
+    log.info(`[gov.si] skupaj za izvoz: ${rezultati.length}`);
     if (rezultati.length) await Actor.pushData(rezultati);
 });
