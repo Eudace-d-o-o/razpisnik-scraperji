@@ -332,6 +332,86 @@ if (!rezultat && (vir === 'HR' || vir === 'HREU' || url.includes('eufondovi.gov.
     }
 }
 
+// ─── SPIRIT: JSON API (20. 8. 2026) ────────────────────────────────────────────
+// ZAKAJ TA VEJA SPLOH OBSTAJA: spiritslovenia.si je Angularjeva enostranska aplikacija. Gola
+// stran vrne le ogrodje — izmerjeno 20. 8. 2026: 4,6 kB in 1.770 znakov besedila, kar je pod
+// pragom veljavnega zajema (500 znakov je sicer prag, a od tega je skoraj vse navigacija).
+// CheerioCrawler zato pri SPIRIT-u vrne prakticno nic; v dnevniku osvezitve so bili taki zapisi
+// videti kot "prekratek-zajem-0".
+//
+// ZAKAJ NE BRSKALNIK: prva misel je bila zamenjati CheerioCrawler s PlaywrightCrawler. To bi
+// zahtevalo tezjo osnovno sliko (apify/actor-node-playwright-chrome) in bi upocasnilo VSE vire v
+// tem akterju, ne le SPIRIT-a. Namesto tega beremo isti vmesnik, ki ga uporablja njihova stran:
+//   • /api/v1/backend/tender/list      → seznam z zvezo `link` (slug) → `id`
+//   • /api/v1/backend/tender/get?id=N  → celotna vsebina razpisa
+// Izmerjeno na JR Partnerstva 25-28: 19.831 znakov namesto 1.770. Hitreje, ceneje in stabilneje
+// od brskalnika.
+//
+// CE SE VMESNIK SPREMENI: veja tiho odpove in zapis pade na obstojeco pot (CheerioCrawler), ki
+// vrne prekratek zajem — kar osvezitev ZAVRNE in NE prepise dobre vsebine. Napaka je torej vidna
+// v dnevniku, ne pa v podatkih.
+if (!rezultat && (vir === 'SPIRIT' || url.includes('spiritslovenia.si'))) {
+    try {
+        const m = url.match(/\/razpisi\/([^/?#]+)/i);
+        const slug = m ? decodeURIComponent(m[1]) : null;
+        if (!slug) throw new Error('iz naslova ni mogoce izlusciti oznake razpisa');
+
+        const glave = { 'User-Agent': 'Mozilla/5.0', Accept: 'application/json' };
+        const seznamR = await fetch('https://www.spiritslovenia.si/api/v1/backend/tender/list', { headers: glave });
+        if (!seznamR.ok) throw new Error(`seznam razpisov: HTTP ${seznamR.status}`);
+        const seznam = await seznamR.json();
+        const zapis = (seznam?.data || []).find((x) => x.link === slug);
+        if (!zapis) throw new Error(`oznake "${slug}" ni v seznamu SPIRIT`);
+
+        const podrobnostiR = await fetch(
+            `https://www.spiritslovenia.si/api/v1/backend/tender/get?id=${encodeURIComponent(zapis.id)}`,
+            { headers: glave });
+        if (!podrobnostiR.ok) throw new Error(`podrobnosti razpisa: HTTP ${podrobnostiR.status}`);
+        const podrobnosti = await podrobnostiR.json();
+        const o = podrobnosti?.data || {};
+
+        // Vsebina je v vec poljih z oznakami HTML. Pobiramo jih v vrstnem redu, kot jih vidi
+        // obiskovalec, in oznake odstranimo — model bere besedilo, ne postavitve.
+        const vBesedilo = (v) => String(v || '')
+            .replace(/<br\s*\/?>/gi, '\n')
+            .replace(/<\/(p|div|li|h[1-6])>/gi, '\n')
+            .replace(/<[^>]+>/g, ' ')
+            .replace(/&nbsp;/gi, ' ').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
+            .replace(/[ \t]+/g, ' ').replace(/\n{3,}/g, '\n\n').trim();
+
+        const kosi = [];
+        if (o.title) kosi.push(vBesedilo(o.title));
+        if (o.subtitle) kosi.push(vBesedilo(o.subtitle));
+        // `snippets` je seznam vsebinskih blokov strani; vsak ima lahko naslov in besedilo.
+        for (const s of (Array.isArray(o.snippets) ? o.snippets : [])) {
+            const naslovBloka = vBesedilo(s?.title);
+            const telo = vBesedilo(s?.content || s?.text || s?.body || s?.description);
+            if (naslovBloka) kosi.push(`\n=== ${naslovBloka} ===`);
+            if (telo) kosi.push(telo);
+        }
+        // Kar ni v `snippets`, poberemo iz preostalih besedilnih polj, da nic ne izgubimo.
+        for (const [k, v] of Object.entries(o)) {
+            if (['title', 'subtitle', 'snippets', 'link'].includes(k)) continue;
+            if (typeof v === 'string' && v.length > 120) kosi.push(vBesedilo(v));
+        }
+
+        const vsebinaSpirit = kosi.filter(Boolean).join('\n').replace(/\n{3,}/g, '\n\n').trim();
+        if (vsebinaSpirit.length < 500) throw new Error(`vmesnik je vrnil premalo vsebine (${vsebinaSpirit.length} znakov)`);
+
+        log.info(`[SPIRIT] Vmesnik: id ${zapis.id}, ${vsebinaSpirit.length} znakov vsebine.`);
+        rezultat = {
+            url,
+            naslov: vBesedilo(o.title) || zapis.title || '',
+            vsebina: vsebinaSpirit,
+            vir: 'SPIRIT',
+            rokOddaje: o.validTo || null,
+            dokumenti: [],
+        };
+    } catch (e) {
+        log.warning(`[SPIRIT] Vmesnik ni uspel (${e.message}) — poskusim po obicajni poti.`);
+    }
+}
+
 // ─── SPS / ARIS / ostalo: CheerioCrawler + PDF branje ─────────────────────────
 if (!rezultat) {
     const crawler = new CheerioCrawler({
