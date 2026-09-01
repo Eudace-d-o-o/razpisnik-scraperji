@@ -1,0 +1,9 @@
+{
+  "actorSpecification": 1,
+  "name": "jsmgg-scraper",
+  "title": "JSMGG scraper",
+  "description": "Scraper odprtih in zakljucenih javnih razpisov Javnega sklada malega gospodarstva Goriske",
+  "version": "1.0",
+  "input": "./input_schema.json",
+  "dockerfile": "../Dockerfile"
+}

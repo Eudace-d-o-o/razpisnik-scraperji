@@ -1,0 +1,13 @@
+{
+  "name": "jsmgg-scraper",
+  "version": "1.0.0",
+  "type": "commonjs",
+  "description": "Scraper javnih razpisov Javnega sklada malega gospodarstva Goriske (jsmgg.si) za razpisnik-portal",
+  "dependencies": {
+    "apify": "^3.2.6",
+    "cheerio": "^1.2.0"
+  },
+  "scripts": {
+    "start": "node src/main.js"
+  }
+}
