@@ -38,7 +38,10 @@ function povezaveIzSeznama(html) {
     const vzorecRokov = 'v letu 2026: 4. 9., 16. 10., 23. 11. - do 12.00 za vse navedene datume; '
         + 'v letu 2027: 8. 1., 12. 2., 19. 3., 23. 4., 21. 5., 3. 9. - do 12.00 za vse navedene datume oz. do porabe sredstev.';
     const datumi = datumiIzRokov(vzorecRokov);
-    console.log(`  najdenih datumov: ${datumi.length} -> ${datumi.map((d) => d.niz).join(', ')}`);
+    console.log(`  leto spredaj: ${datumi.length} -> ${datumi.map((d) => d.niz).join(', ')}`);
+    const starejsi = datumiIzRokov('8. 9. , 9. 10., 6. 11., 1. 12. 2023');
+    console.log(`  leto ob zadnjem: ${starejsi.length} -> ${starejsi.map((d) => d.niz).join(', ')}`);
+    console.log(`  brez leta (ne ugibamo): ${JSON.stringify(datumiIzRokov('8. 9., 9. 10.').map((d) => d.niz))}`);
     console.log(`  brez rokov: ${JSON.stringify(datumiIzRokov(''))}`);
     console.log(`  statusIzOznak(['Zaključen','Rezultati']) = ${statusIzOznak(['Zaključen', 'Rezultati'])}`
         + ` | (['Odprt']) = ${statusIzOznak(['Odprt'])} | ([]) = ${statusIzOznak([])}`);

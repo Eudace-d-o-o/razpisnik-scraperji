@@ -48,9 +48,9 @@ function vSlovenskiDatum(isoNiz) {
 }
 
 /**
- * Prijavni roki JSMGG niso en datum, ampak seznam presečnih datumov po letih, npr.:
- *   "v letu 2026: 4. 9., 16. 10., 23. 11. - do 12.00 za vse navedene datume;"
- *   "v letu 2027: 8. 1., 12. 2., 19. 3. - do 12.00 ... oz. do porabe sredstev."
+ * Prijavni roki JSMGG niso en datum, ampak seznam presečnih datumov. Sklad uporablja dve obliki:
+ *   "v letu 2026: 4. 9., 16. 10., 23. 11. - do 12.00 za vse navedene datume;"   (leto spredaj)
+ *   "8. 9., 9. 10., 6. 11., 1. 12. 2023"                                        (leto ob zadnjem)
  * Besedilo razrežemo po odsekih "v letu YYYY" in v vsakem poberemo pare "dan. mesec.".
  * Ure ("do 12.00") vzorec ne ujame, ker za drugim številom zahteva piko, ki je tam ni.
  */
@@ -59,17 +59,28 @@ function datumiIzRokov(besedilo) {
     const odseki = String(besedilo || '').split(/(?=v\s+letu\s+\d{4})/i);
     for (const odsek of odseki) {
         const zadetekLeta = odsek.match(/v\s+letu\s+(\d{4})/i);
-        if (!zadetekLeta) continue;
-        const leto = Number(zadetekLeta[1]);
-        const vzorec = /(\d{1,2})\.\s*(\d{1,2})\.(?!\d)/g;
+        const najdeni = [];
+        const vzorec = /(\d{1,2})\.\s*(\d{1,2})\.(?:\s*(\d{4}))?(?!\d)/g;
         let zadetek;
         while ((zadetek = vzorec.exec(odsek)) !== null) {
             const dan = Number(zadetek[1]);
             const mesec = Number(zadetek[2]);
             if (dan < 1 || dan > 31 || mesec < 1 || mesec > 12) continue;
+            najdeni.push({ dan, mesec, leto: zadetek[3] ? Number(zadetek[3]) : null });
+        }
+        // Leto je v odseku zapisano enkrat — bodisi na začetku ("v letu 2026: ...") bodisi ob
+        // zadnjem datumu ("... 1. 12. 2023") — in velja za cel odsek. Datumu brez leta ga zato
+        // dopolnimo; kadar leta ni nikjer, datuma NE zapišemo (roka ne ugibamo).
+        const rezervnoLeto = zadetekLeta
+            ? Number(zadetekLeta[1])
+            : (najdeni.find((d) => d.leto) || {}).leto || null;
+
+        for (const d of najdeni) {
+            const leto = d.leto || rezervnoLeto;
+            if (!leto) continue;
             datumi.push({
-                niz: `${String(dan).padStart(2, '0')}.${String(mesec).padStart(2, '0')}.${leto}`,
-                cas: new Date(leto, mesec - 1, dan).getTime(),
+                niz: `${String(d.dan).padStart(2, '0')}.${String(d.mesec).padStart(2, '0')}.${leto}`,
+                cas: new Date(leto, d.mesec - 1, d.dan).getTime(),
             });
         }
     }
@@ -163,12 +174,16 @@ function razcleniRazpis(html, url) {
         .map((_, e) => cist($(e).text())).get().filter(Boolean);
     const informacije = cist(clanek.find('.field--name-field-informacije .field__item').first().text());
 
+    const status = statusIzOznak(oznakeStanja);
     const datumi = datumiIzRokov(roki.join(' '));
     const sedaj = Date.now();
     const naslednji = datumi.find((d) => d.cas >= sedaj);
     // Zadnji presečni datum je dan, do katerega je razpis odprt — to je rok, ki ga portal
     // prikazuje in po katerem filtrira. Posamezni presečni datumi ostanejo v Vsebini.
-    const zadnji = datumi.length ? datumi[datumi.length - 1].niz : null;
+    // Pri zaključenem razpisu pa je zadnji dan za oddajo dan zaključka: presečni roki so bili
+    // napovedani vnaprej in segajo čez zaprtje, ker sklad razpis zapre ob porabi sredstev.
+    const zadnjiPresecni = datumi.length ? datumi[datumi.length - 1].niz : null;
+    const rok = (status === 'Zaprt' && datumZakljucka) ? datumZakljucka : zadnjiPresecni;
 
     const deli = [];
     if (podrocje) deli.push(`Področje: ${podrocje}`);
@@ -183,11 +198,11 @@ function razcleniRazpis(html, url) {
     return {
         'Naziv razpisa': naziv,
         'URL': url,
-        'Status': statusIzOznak(oznakeStanja),
+        'Status': status,
         // JSMGG daje izključno brezobrestna posojila; tip zapišemo le, kadar to potrjuje naziv
         // razpisa, sicer ostane prazen (portal pozna Nepovratna sredstva/Kredit/Garancija).
         'Tip financiranja': /posojil/i.test(naziv) ? 'Kredit' : null,
-        'Rok prijave': zadnji,
+        'Rok prijave': rok,
         'Datum zaznave': danes(),
         'Sredstva': sredstva || null,
         'Programme': podrocje || null,

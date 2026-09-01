@@ -31,11 +31,16 @@ JSMGG nima enega roka, ampak seznam presečnih datumov po letih:
 > v letu 2026: 4. 9., 16. 10., 23. 11. - do 12.00 za vse navedene datume;
 > v letu 2027: 8. 1., 12. 2., 19. 3., 23. 4., 21. 5., 3. 9. — oz. do porabe sredstev.
 
+Starejši razpisi imajo drugo obliko, kjer leto stoji ob zadnjem datumu:
+»8. 9., 9. 10., 6. 11., 1. 12. 2023«. Obe obliki znamo prebrati; kadar leta ni nikjer, datuma
+ne zapišemo — roka ne ugibamo.
+
 V polje `Rok prijave` gre **zadnji** presečni datum, torej dan, do katerega je razpis odprt; to
-je rok, ki ga portal prikazuje in po katerem filtrira. Celotno besedilo rokov in prvi še
-neiztekli rok (`Naslednji prijavni rok`) sta v polju `Vsebina`, da se pri delu s stranko vidita
-oba podatka. Kadar iz besedila ni razvidnega nobenega datuma, ostane `Rok prijave` prazen —
-roka ne ugibamo.
+je rok, ki ga portal prikazuje in po katerem filtrira. Pri **zaključenem** razpisu gre v to polje
+`Datum zaključka razpisa`: presečni roki so napovedani vnaprej in segajo čez zaprtje, ker sklad
+razpis zapre ob porabi sredstev — brez tega bi zaprti razpisi v portalu nosili rok v prihodnosti.
+Celotno besedilo rokov in prvi še neiztekli rok (`Naslednji prijavni rok`) sta v polju `Vsebina`,
+da se pri delu s stranko vidita oba podatka.
 
 ### Status in tip financiranja
 
