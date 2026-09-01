@@ -105,6 +105,9 @@ function statusIzOznak(oznake) {
 async function povezaveSeznama(pot) {
     const povezave = [];
     const videne = new Set();
+    // Datum zaključka razpisa je SAMO na seznamski strani — stran posameznega razpisa ga nima
+    // (izmerjeno 1. 9. 2026), zato ga poberemo tu in prenesemo v razčlembo.
+    const datumiZakljucka = new Map();
     let napovedano = null;
 
     for (let stran = 0; stran < NAJVEC_STRANI; stran++) {
@@ -127,6 +130,9 @@ async function povezaveSeznama(pot) {
             if (videne.has(url)) return;
             videne.add(url);
             povezave.push(url);
+            const zakljucek = vSlovenskiDatum(
+                $(vrstica).find('.views-field-field-zakljucen-dne time').first().attr('datetime'));
+            if (zakljucek) datumiZakljucka.set(url, zakljucek);
             novihNaStrani++;
         });
         if (!novihNaStrani) break;                       // ista stran znova — konec listanja
@@ -135,7 +141,7 @@ async function povezaveSeznama(pot) {
         await pocakaj(ZAMIK_MS);
     }
 
-    return { povezave, napovedano };
+    return { povezave, napovedano, datumiZakljucka };
 }
 
 // Priponke so razdeljene v skupine ("Dokumenti in obrazci", "Vloga za posojilo", ...), vsaka
@@ -156,7 +162,7 @@ function priponkeRazpisa($, clanek) {
     return skupine;
 }
 
-function razcleniRazpis(html, url) {
+function razcleniRazpis(html, url, datumZakljucka = null) {
     const $ = cheerio.load(html);
     const clanek = $('article.node--type-razpisi').first();
     if (!clanek.length) return null;
@@ -168,8 +174,9 @@ function razcleniRazpis(html, url) {
     const oznakeStanja = clanek.find('.field--name-field-status-razpisa .field__item')
         .map((_, e) => cist($(e).text())).get();
     const datumObjave = vSlovenskiDatum(clanek.find('.field--name-field-datum-objave time').first().attr('datetime'));
-    const datumZakljucka = vSlovenskiDatum(clanek.find('.field--name-field-zakljucen-dne time').first().attr('datetime'));
     const sredstva = cist(clanek.find('.field--name-field-razpolozljiva-sredstva .field__item').first().text());
+    // "Kratek opis" je pri JSMGG sklic na objavo v Uradnem listu, ne opis razpisa.
+    const uradniList = cist(clanek.find('.field--name-field-kratek-opis').text());
     const roki = clanek.find('.field--name-field-prijavni-roki .field__item')
         .map((_, e) => cist($(e).text())).get().filter(Boolean);
     const informacije = cist(clanek.find('.field--name-field-informacije .field__item').first().text());
@@ -192,6 +199,7 @@ function razcleniRazpis(html, url) {
     if (naslednji) deli.push(`Naslednji prijavni rok: ${naslednji.niz}`);
     if (datumObjave) deli.push(`Datum objave: ${datumObjave}`);
     if (datumZakljucka) deli.push(`Datum zaključka razpisa: ${datumZakljucka}`);
+    if (uradniList) deli.push(`Objava: ${uradniList}`);
     if (informacije) deli.push(`Informacije: ${informacije}`);
     deli.push(...priponkeRazpisa($, clanek));
 
@@ -213,8 +221,10 @@ function razcleniRazpis(html, url) {
 
 Actor.main(async () => {
     const vseUrl = [];
+    const zakljucki = new Map();
     for (const pot of SEZNAMI) {
-        const { povezave, napovedano } = await povezaveSeznama(pot);
+        const { povezave, napovedano, datumiZakljucka } = await povezaveSeznama(pot);
+        for (const [url, datum] of datumiZakljucka) zakljucki.set(url, datum);
         if (!povezave.length) {
             console.error(`[JSMGG] SEZNAM BREZ POVEZAV: ${pot} — poglej selektorje seznama`);
         } else if (napovedano !== null && povezave.length < napovedano) {
@@ -228,7 +238,7 @@ Actor.main(async () => {
     let napak = 0;
     for (const url of vseUrl) {
         try {
-            const zapis = razcleniRazpis(await preberi(url), url);
+            const zapis = razcleniRazpis(await preberi(url), url, zakljucki.get(url) || null);
             if (zapis) rezultati.push(zapis);
             else { napak++; console.error(`[JSMGG] NERAZČLENJENO: ${url}`); }
         } catch (e) {
