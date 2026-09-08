@@ -116,16 +116,29 @@ function najdiDokumentLinke($, baseUrl) {
         const skupno = (tekst + ' ' + absUrl).toLowerCase();
 
         let prioriteta = 1;
-        // "Pojasnila" / "razpisna dokumentacija" / "javni razpis" / "annex" (EU razpisi) dokumenti
-        // vsebujejo dejanske pogoje, zneske in metodologijo sofinanciranja — najvišja prioriteta.
+        // "Pojasnila" / "razpisna dokumentacija" / "javni razpis"/"javni poziv" / "annex" (EU
+        // razpisi) dokumenti vsebujejo dejanske pogoje, zneske in metodologijo sofinanciranja —
+        // najvišja prioriteta. EKO sklad svoje razpise imenuje "javni POZIV", ne "javni razpis"
+        // (npr. "Javni_poziv_118FS-PO24.pdf") — brez te besede glavni dokument razpisa ni bil
+        // nikoli prepoznan in je ostal na isti (privzeti) prioriteti kot vsak drug dokument na
+        // strani, glej varovalko za Uradni list spodaj.
         if (/pojasnil/i.test(skupno)) prioriteta = 4;
         else if (/razpisna.?dokumentacij/i.test(skupno)) prioriteta = 4;
         else if (/\bannex\b/i.test(skupno)) prioriteta = 4;
-        else if (/javni.?razpis/i.test(skupno)) prioriteta = 3;
+        else if (/javni.?razpis/i.test(skupno) || /javni.?poziv/i.test(skupno)) prioriteta = 3;
         else if (/posebni.?pogoj/i.test(tekst) || /^pogoj/i.test(tekst)) prioriteta = 2;
         // Obrazci/izjave/vzorci pogodb ipd. NE vsebujejo formalnih pogojev — nizka prioriteta za
         // GLOBINSKO branje (spodaj), a jih VSEENO katalogiziramo (glej vsiDokumenti v rezultatu).
         if (/obrazec|izjav[ae]|vzorec.?pogodb|navodil.{0,15}(e-?)?podpis|prijavni.?list|soglasj/i.test(skupno)) prioriteta = 0;
+        // NIKOLI ne beri Uradni list v celoti (izmerjeno 8. 9. 2026 pri EKO skladu). Stran vedno
+        // linka na CELOTNO številko Uradnega lista, v kateri je objavljenih na desetine nepovezanih
+        // razpisov drugih izdajateljev — te povezave so v HTML-ju PRED dejanskimi dokumenti razpisa
+        // in so imele enako (privzeto) prioriteto kot pravi dokument, zato so porabile celotno
+        // 200.000-znakovno mejo vsebine, dejansko besedilo razpisa pa sploh ni prišlo do izpisa
+        // (potrjeno na vseh štirih prizadetih zapisih: 118FS-PO24, 76POEV24, 113SUB-EPPO24,
+        // 91FS-sNESPO21). Uradni list se SME katalogizirati (spodaj, vsiDokumenti) kot referenca, a
+        // se NIKOLI ne bere globinsko.
+        if (/uradni-list\.si/i.test(absUrl)) prioriteta = 0;
 
         linki.push({ url: absUrl, tekst, prioriteta, klasifikacija: klasificirajPovezavo(tekst) });
     });
