@@ -7,10 +7,11 @@
   },
   "dependencies": {
     "apify": "^3.2.6",
-    "crawlee": "^3.10.0",
-    "pdf-parse": "^2.4.5",
-    "mammoth": "^1.9.1",
     "cheerio": "^1.0.0",
+    "crawlee": "^3.10.0",
+    "mammoth": "^1.9.1",
+    "pdf-parse": "^2.4.5",
+    "pdfjs-dist": "5.4.296",
     "undici": "^6.19.8"
   },
   "engines": {

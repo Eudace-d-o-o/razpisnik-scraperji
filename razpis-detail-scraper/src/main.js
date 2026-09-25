@@ -16,6 +16,7 @@ import mammoth from 'mammoth';
 import * as cheerio from 'cheerio';
 import { ProxyAgent } from 'undici';
 import { razdeliDokumentniBudget } from './deli-dokumentni-budget.js';
+import { pretvoriUradniListPdf, izrezSpremembo, najdiSpremembeLinke } from './uradni-list.js';
 
 await Actor.init();
 
@@ -73,7 +74,6 @@ async function prebrDokument(docUrl) {
         return '';
     }
 }
-
 
 // Preprosta pravilna klasifikacija po besedilu povezave — glej pogovor z uporabnikom
 // 2026-07-16: "vzameš naslov povezave, npr. če je Javni razpis daš klasifikacijo javni razpis,
@@ -511,6 +511,44 @@ if (!rezultat) {
                         prebranaBesedila.push({ l, cisto: txt.replace(/\s+/g, ' ').trim() });
                     }
                 }
+                // Spremembe razpisa, objavljene SAMO v Uradnem listu (glej src/uradni-list.js)
+                // — dodajo se v ISTI seznam PRED delitvijo prostora, da so tudi one del
+                // pravičnega deleža po dolžini. So kratke (nekaj sto do nekaj tisoč znakov),
+                // zato v praksi dobijo celoto.
+                const spremembeLinki = najdiSpremembeLinke($, request.url);
+                if (spremembeLinki.length) {
+                    log.info(`[UL] Najdenih povezav "Sprememba*" na uradni-list.si: ${spremembeLinki.length}`);
+                }
+                for (const s of spremembeLinki) {
+                    const nazivPovezave = s.tekst.replace(/[.,]\s*$/, ''); // "Sprememba št. 6," -> "Sprememba št. 6"
+                    const oznakaUL = `${nazivPovezave} (Uradni list RS, št. ${s.stevilka}/${s.leto})`;
+                    const pdfR = await fetch(s.url, { headers: { 'User-Agent': 'Mozilla/5.0' } });
+                    if (!pdfR.ok) {
+                        log.warning(`[UL] HTTP ${pdfR.status} za ${oznakaUL}: ${s.url}`);
+                        continue;
+                    }
+                    const pdfBuffer = Buffer.from(await pdfR.arrayBuffer());
+                    if (pdfBuffer.length > 15 * 1024 * 1024) {
+                        log.warning(`[UL] Preveliko (${pdfBuffer.length} B) za ${oznakaUL}: ${s.url}`);
+                        continue;
+                    }
+                    let besediloUL;
+                    try {
+                        besediloUL = await pretvoriUradniListPdf(pdfBuffer);
+                    } catch (e) {
+                        log.warning(`[UL] Napaka pri branju ${oznakaUL} (${s.url}): ${e.message}`);
+                        continue;
+                    }
+                    const odsek = izrezSpremembo(besediloUL, naslov);
+                    if (!odsek) {
+                        // Raje nič kot tuja objava — brez ujemanja po nazivu IN uradni oznaki
+                        // razpisa se v vsebino NIČ ne doda.
+                        log.warning(`[UL] Ni najdenega ujemajočega odseka za "${naslov}" v ${oznakaUL} (${s.url})`);
+                        continue;
+                    }
+                    prebranaBesedila.push({ l: { url: s.url, tekst: oznakaUL }, cisto: odsek.replace(/\s+/g, ' ').trim() });
+                }
+
                 const meje = razdeliDokumentniBudget(prebranaBesedila.map(d => d.cisto.length), DOK_BUDGET_SKUPAJ);
                 for (let i = 0; i < prebranaBesedila.length; i++) {
                     const { l } = prebranaBesedila[i];
