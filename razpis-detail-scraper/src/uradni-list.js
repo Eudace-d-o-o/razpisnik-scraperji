@@ -68,12 +68,19 @@ function normaliziraj(t) {
 // veljavne meje bi zavrnili ravno predzadnji produkt v seznamu (izmerjeno: "LOKALNO PF (2024)"
 // je bil edini od 16 strani s spremembami, ki ni dobil NITI ENE — vseh 5 njegovih sprememb je
 // bilo objavljenih izključno v takih skupnih seznamih).
+// POPRAVEK (nasprotni pregled 25. 9. 2026): preveriti je treba VSA pojavljanja "nazivL" v
+// "nazivDel", ne le prvega — če je prvo pojavljanje del daljšega imena (npr. "nazivDel" =
+// "BIZI Krožno Obmejna, BIZI Krožno" in "nazivL" = "BIZI Krožno"), bi preverba prve pojavitve
+// napačno zavrnila ujemanje, čeprav DRUGA pojavitev v istem besedilu meji zadosti. Gre za
+// "izpad" (manjkajoča sprememba), ne za tujo objavo, a se vseeno popravi.
 function celNazivUjema(nazivDel, nazivL) {
     if (!nazivL) return false;
-    const i = nazivDel.indexOf(nazivL);
-    if (i === -1) return false;
-    const zaNjim = nazivDel.slice(i + nazivL.length);
-    return zaNjim === '' || /^\s*(,|ter\b|in\b|št\.)/i.test(zaNjim);
+    let i = -1;
+    while ((i = nazivDel.indexOf(nazivL, i + 1)) !== -1) {
+        const zaNjim = nazivDel.slice(i + nazivL.length);
+        if (zaNjim === '' || /^\s*(,|ter\b|in\b|št\.)/i.test(zaNjim)) return true;
+    }
+    return false;
 }
 
 // Poišče meje MED VSEMI objavami v tej številki UL (katerekoli agencije, ne le SRRS) — vsaka
@@ -182,25 +189,45 @@ export function izrezSpremembo(besedilo, naziv, oznakaRazpisa) {
 }
 
 // Poišče URADNO OZNAKO tega razpisa (npr. "3301-1/2024-SRRS-23") med že prebranimi dokumenti
-// strani — dokument "javni razpis"/"javni poziv" vedno v uvodu navede svojo lastno oznako.
-// Brez dodatnega omrežnega klica (dokumenti so že prebrani za drug namen). Vrne null, če
-// oznake ni bilo mogoče najti nikjer — takrat izrezSpremembo pade na rezervno pot (cel naziv).
+// strani. Brez dodatnega omrežnega klica (dokumenti so že prebrani za drug namen). Vrne null,
+// če oznake ni bilo mogoče najti nikjer — takrat izrezSpremembo pade na rezervno pot (cel naziv).
+//
+// POPRAVEK (nasprotni pregled 25. 9. 2026, živi tek na 16 straneh): SRRS na svoji strani
+// dokumentov ne poimenuje po standardni frazi "javni razpis"/"javni poziv" (npr. povezava se
+// glasi "Besedilo produkta AGRO FI mladi"), zato je prejšnja prioritizacija po klasifikaciji
+// pogosto ostala prazna in je funkcija vzela kar PRVI dokument s katero koli oznako. Prvi
+// dokument je bil pri AGRO FI Mladi/Mikro ravno SRRS-jeva lastna "Sprememba št. 7" (samostojen
+// PDF na srrs.si, ne Uradni list) — njena UVODNA oznaka je oznaka TE SPREMEMBE (SRRS-66/-65),
+// NE prvotnega razpisa (SRRS-23/-22), kar je vsako ujemanje razveljavilo (0/6 najdenih na obeh
+// straneh). Popravek: dokumenti, katerih besedilo povezave kaže na spremembo ("Sprememba..."),
+// se pri iskanju IZPUSTIJO; med preostalimi zmaga oznaka, ki se pojavi v NAJVEČ dokumentih
+// (večinsko glasovanje — pri obeh straneh so vsi 4 preostali dokumenti nosili pravo oznako).
 export function poisciOznakoRazpisa(prebranaBesedila) {
     // \s* pred "SRRS": glej opombo pri MEJA_SRRS v izrezSpremembo — enak prelom vrstice se
     // lahko pojavi tudi v tem, ločeno prebranem dokumentu.
-    const RE = /\d{2,4}[.\/-]\d{1,3}\/\d{4}-\s*SRRS-\d+/;
-    const prioritetni = [];
-    const ostali = [];
-    for (const d of prebranaBesedila || []) {
-        const oznacba = (d?.l?.klasifikacija || d?.l?.tekst || '');
-        if (/javni.?razpis|javni.?poziv/i.test(oznacba)) prioritetni.push(d);
-        else ostali.push(d);
-    }
-    for (const d of [...prioritetni, ...ostali]) {
-        const m = (d.cisto || '').match(RE);
-        if (m) return m[0].replace(/\s+/g, '');
-    }
-    return null;
+    const RE = /\d{2,4}[.\/-]\d{1,3}\/\d{4}-\s*SRRS-\d+/g;
+    const glasuj = (viri) => {
+        const glasovi = new Map();
+        for (const d of viri) {
+            // Set: vsak dokument prispeva NAJVEČ EN glas na oznako, ne glede na to, kolikokrat
+            // jo v svojem besedilu ponovi — sicer bi en sam dolg dokument lahko preglasil štiri
+            // krajše.
+            const najdene = new Set(((d.cisto || '').match(RE) || []).map((s) => s.replace(/\s+/g, '')));
+            for (const oznaka of najdene) glasovi.set(oznaka, (glasovi.get(oznaka) || 0) + 1);
+        }
+        let najboljsa = null;
+        let najvecGlasov = 0;
+        for (const [oznaka, glasov] of glasovi) {
+            if (glasov > najvecGlasov) { najboljsa = oznaka; najvecGlasov = glasov; }
+        }
+        return najboljsa;
+    };
+
+    const vsi = prebranaBesedila || [];
+    const neSpremembe = vsi.filter((d) => !/^sprememb/i.test(d?.l?.tekst || ''));
+    // Če izločitev "sprememb" ne pusti ničesar (skrajen primer: stran nima drugih prebranih
+    // dokumentov), je glasovanje med VSEMI dokumenti še vedno boljše kot brez oznake.
+    return glasuj(neSpremembe.length ? neSpremembe : vsi);
 }
 
 // Poišče povezave, katerih besedilo se ZAČNE z "Sprememba" (in oblike "Spremembe", "sprememba

@@ -531,8 +531,24 @@ if (!rezultat) {
                     if (!oznakaRazpisa) {
                         log.warning(`[UL] Uradne oznake razpisa "${naslov}" ni bilo mogoče določiti iz že prebranih dokumentov — ujemanje bo (manj zanesljivo) samo po celem nazivu.`);
                     }
-                    for (const s of spremembeLinki) {
-                        const r = await preberiSpremembo(s, naslov, oznakaRazpisa);
+                    // SKUPNA časovna omejitev za VSE povezave "Sprememba*" (ne posamezno na
+                    // povezavo) — nasprotni pregled 25. 9. 2026: 6 povezav × 30 s posamezne
+                    // omejitve preseže requestHandlerTimeoutSecs (120 s), kar sproži 3
+                    // ponovitve (skupaj ~486 s) — dlje, kot ju čaka portal (največ 300 s,
+                    // glej lib/zajem-podrobnosti.js) ali osveži-izvor (170 s). Ko je skupni
+                    // proračun porabljen, se preostale povezave preskočijo BREZ poskusa
+                    // (log.warning), posamezna povezava pa dobi kvečjemu preostanek proračuna.
+                    const SKUPNA_OMEJITEV_UL_MS = 40000;
+                    const zacetekUL = Date.now();
+                    for (let i = 0; i < spremembeLinki.length; i++) {
+                        const s = spremembeLinki[i];
+                        const preostaloMs = SKUPNA_OMEJITEV_UL_MS - (Date.now() - zacetekUL);
+                        if (preostaloMs <= 0) {
+                            const preostaleStevilo = spremembeLinki.length - i;
+                            log.warning(`[UL] Skupna časovna omejitev (${SKUPNA_OMEJITEV_UL_MS} ms) za spremembe je potekla — preostalih ${preostaleStevilo} povezav preskočenih brez poskusa.`);
+                            break;
+                        }
+                        const r = await preberiSpremembo(s, naslov, oznakaRazpisa, { casovnaOmejitevMs: Math.min(30000, preostaloMs) });
                         if (r.odsek) {
                             prebranaBesedila.push({ l: { url: s.url, tekst: r.oznakaUL }, cisto: r.odsek.replace(/\s+/g, ' ').trim() });
                         } else {

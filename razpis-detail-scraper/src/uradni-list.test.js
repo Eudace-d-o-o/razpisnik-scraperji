@@ -183,7 +183,22 @@ Slovenski regionalno razvojni sklad`,
     assert.equal(poisciOznakoRazpisa(prebrana), '3301-1/2024-SRRS-23');
     assert.equal(poisciOznakoRazpisa([{ l: { tekst: 'x' }, cisto: 'brez oznake tukaj' }]), null);
     assert.equal(poisciOznakoRazpisa([]), null);
-    console.log('7) poisciOznakoRazpisa — prednost dokumentu "javni razpis", null brez zadetka: OK');
+
+    // POPRAVEK (nasprotni pregled 25. 9. 2026, živi tek): SRRS na svoji strani dokumentov NE
+    // poimenuje po frazi "javni razpis"/"javni poziv" (npr. "Besedilo produkta AGRO FI mladi"),
+    // zato klasifikacija pogosto ostane prazna. Prvi dokument je bil pri dejanskem teku ravno
+    // SRRS-jeva lastna "Sprememba št. 7", katere UVODNA oznaka je oznaka TE SPREMEMBE
+    // (SRRS-66), ne prvotnega razpisa (SRRS-23) — brez izločitve "sprememb" in večinskega
+    // glasovanja bi funkcija vrnila napačno oznako (izmerjeno: 0/6 najdenih na dveh straneh).
+    const prebranaBrezKlasifikacije = [
+        { l: { tekst: 'Sprememba št. 7' }, cisto: 'Slovenski regionalno razvojni sklad objavlja spremembo, št. 3301-1/2024-SRRS-66, javnega razpisa AGRO FI mladi...' },
+        { l: { tekst: 'Besedilo produkta AGRO FI mladi (.pdf)' }, cisto: 'Drugi javni razpis za finančni produkt AGRO FI mladi, št. 3301-1/2024-SRRS-23, ...' },
+        { l: { tekst: 'Seznam meril' }, cisto: 'Merila za ocenjevanje vlog na razpis št. 3301-1/2024-SRRS-23...' },
+        { l: { tekst: 'Seznam prilog' }, cisto: 'Priloge k razpisu št. 3301-1/2024-SRRS-23...' },
+        { l: { tekst: 'Vzorec posojilne pogodbe' }, cisto: 'Vzorec pogodbe za razpis št. 3301-1/2024-SRRS-23...' },
+    ];
+    assert.equal(poisciOznakoRazpisa(prebranaBrezKlasifikacije), '3301-1/2024-SRRS-23', 'oznaka spremembe (SRRS-66) ne sme preglasiti oznake, ki jo nosijo štirje drugi dokumenti (SRRS-23)');
+    console.log('7) poisciOznakoRazpisa — prednost dokumentu "javni razpis", izločitev sprememb + večinsko glasovanje, null brez zadetka: OK');
 }
 
 // 8) najdiSpremembeLinke — najde SAMO povezave, katerih besedilo se zacne s "Sprememba" IN
@@ -267,6 +282,26 @@ Slovenski regionalno razvojni sklad`,
     const zOznako = izrezSpremembo(besedilo, 'LOKALNO PF', '3301-1/2024-SRRS-28');
     assert.ok(zOznako, 'oznaka, prelomljena čez vrstico tik pred "SRRS-NN", mora biti kljub temu prepoznana');
     console.log('10) Skupni seznam produktov ("... ter NVO PF") + oznaka, prelomljena tik pred "SRRS-NN": OK');
+}
+
+// 11) POPRAVEK (nasprotni pregled 25. 9. 2026, TOČKA 3): preveriti je treba VSA pojavljanja
+// naziva v seznamu, ne le prvega. Spodaj je PRVO pojavljanje "BIZI Krožno" del daljšega imena
+// ("BIZI Krožno Obmejna" — meja za njim ni izpolnjena), DRUGO pojavljanje pa je samostojno na
+// koncu seznama (pravilna meja). Prejšnja različica bi preverila samo prvo pojavljanje in
+// spremembo IZPUSTILA, čeprav se dejansko nanaša na iskani razpis.
+{
+    const besedilo = ul(
+        `Št. 3021-1/2025-SRRS-20 Ob-5000/25
+Sprememba
+Slovenski regionalno razvojni sklad objavlja spremembe Javnega razpisa za finančna produkta – BIZI Krožno Obmejna in BIZI Krožno, št. 3021-1/2024-SRRS-1, objavljenega, in sicer kot sledi:
+Skupni razpisani znesek
+BIZI Krožno je 900,00 EUR.
+Slovenski regionalno razvojni sklad`,
+    );
+    const odsek = izrezSpremembo(besedilo, 'BIZI Krožno', null);
+    assert.ok(odsek, '"BIZI Krožno" mora najti odsek prek DRUGE (ne prve) pojavitve v seznamu naziva');
+    assert.ok(odsek.includes('900,00 EUR'));
+    console.log('11) Preverba VSEH pojavitev naziva, ne le prve: OK');
 }
 
 console.log('\nVsi preizkusi uradni-list.js uspešni.');
