@@ -15,6 +15,7 @@ import { PDFParse } from 'pdf-parse';
 import mammoth from 'mammoth';
 import * as cheerio from 'cheerio';
 import { ProxyAgent } from 'undici';
+import { razdeliDokumentniBudget } from './deli-dokumentni-budget.js';
 
 await Actor.init();
 
@@ -483,37 +484,44 @@ if (!rezultat) {
                 // pogovor z uporabnikom 2026-07-16.
                 const zaGlobinskoBranje = dokLinki.filter(l => l.prioriteta > 0).slice(0, 8);
                 log.info(`[Detail] Najdenih dokumentnih linkov (PDF/Word): ${dokLinki.length}, za globinsko branje: ${zaGlobinskoBranje.length}`);
-                // NAPAKA (izmerjena 25. 9. 2026 pri P7L 2026 — Podjetniški sklad): dokumenti so se
+                // NAPAKA #1 (izmerjena 25. 9. 2026 pri P7L 2026 — Podjetniški sklad): dokumenti so se
                 // prej nizali brez omejitve, skupna vsebina pa se je šele na koncu (glej
                 // VARNOSTNI_LIMIT spodaj) odrezala pri 200.000 znakih. Kadar so prvi dokumenti v
                 // vrsti sami po sebi obsežni, je zadnji dokument dobil samo drobtinice ali nič —
-                // pri P7L 2026 sta "Razpisna dokumentacija" (151.135 zn.) in "Javni razpis"
-                // (48.741 zn.) porabila skoraj ves prostor, "Posebni pogoji" (dejansko ~40.700 zn.,
-                // vsebuje pravilo "največ ena vloga, en kredit") pa je v shranjeni vsebini ostal
-                // dolg samo 80–94 znakov. Enak vzorec je pri pregledu baze 25. 9. 2026 opažen pri
-                // še vsaj 20 drugih razpisih (ARIS, GOVSI, BORZEN, SRIPS) — sistematično prizadene
-                // dokumente z nižjo prioriteto (npr. "posebni pogoji" = 2), ker se berejo ZADNJI.
-                // POPRAVEK: vsak dokument dobi svoj pravičen delež skupnega dokumentnega budgeta,
-                // izračunan vnaprej iz števila dokumentov v vrsti — dokument, ki je krajši od
-                // svojega deleža, ODDA neporabljeni prostor naslednjim (da kratki dokumenti, kot je
-                // ROKOVNIK, ne "izgubijo" prostora, ki ga ne potrebujejo).
+                // "Razpisna dokumentacija" (151.135 zn.) in "Javni razpis" (48.741 zn.) sta porabila
+                // skoraj ves prostor, "Posebni pogoji" (dejansko ~40.700 zn., vsebuje pravilo
+                // "največ ena vloga, en kredit") pa je v shranjeni vsebini ostal dolg samo 80–94
+                // znakov. Enak vzorec je pri pregledu baze 25. 9. 2026 opažen pri še vsaj 20 drugih
+                // razpisih (ARIS, GOVSI, BORZEN, SRIPS).
+                //
+                // NAPAKA #2 v PRVEM popravku (27aff83, izmerjena 25. 9. 2026 na Apify 0.1.28, PRED
+                // dejansko objavo popravljeno): delež je bil izračunan VNAPREJ samo iz števila
+                // dokumentov (budget / N), ne iz njihove dejanske dolžine — trije glavni dokumenti so
+                // dobili po ~25.800 zn. namesto skupno ~180.000, "Javni razpis" polovico manj kot
+                // sploh brez popravka.
+                //
+                // KONČEN POPRAVEK: pravična delitev po dejanski dolžini ("water filling", glej
+                // deli-dokumentni-budget.js) — kratki dokumenti dobijo CELOTNO dolžino, neporabljeni
+                // prostor se prenese naprej, samo najdaljši dokumenti si delijo dejanski preostanek.
                 const DOK_BUDGET_SKUPAJ = 180000; // pod VARNOSTNI_LIMIT (200000) — pusti prostor za HTML stran/rokovnik
-                let dokBudgetPreostanek = DOK_BUDGET_SKUPAJ;
-                for (let i = 0; i < zaGlobinskoBranje.length; i++) {
-                    const l = zaGlobinskoBranje[i];
-                    const stePreostalihDokumentov = zaGlobinskoBranje.length - i;
-                    const delezZaTegaDokumenta = Math.max(1000, Math.floor(dokBudgetPreostanek / stePreostalihDokumentov));
+                const prebranaBesedila = [];
+                for (const l of zaGlobinskoBranje) {
                     const txt = await prebrDokument(l.url);
                     if (txt && txt.length > 50) {
-                        let cisto = txt.replace(/\s+/g, ' ').trim();
-                        if (cisto.length > delezZaTegaDokumenta) {
-                            log.warning(`[Detail] Dokument skrajšan s ${cisto.length} na ${delezZaTegaDokumenta} znakov (pravičen delež pri ${stePreostalihDokumentov} preostalih dokumentih): ${l.tekst || l.url}`);
-                            cisto = cisto.substring(0, delezZaTegaDokumenta) + `\n[... dokument skrajšan pri ${delezZaTegaDokumenta} znakih, izvirnik ${cisto.length} znakov ...]`;
-                        }
-                        dokVsebina += `\n\n=== DOKUMENT: ${l.tekst || l.url} ===\n${cisto}`;
-                        dokViri.push(l.url);
-                        dokBudgetPreostanek -= cisto.length;
+                        prebranaBesedila.push({ l, cisto: txt.replace(/\s+/g, ' ').trim() });
                     }
+                }
+                const meje = razdeliDokumentniBudget(prebranaBesedila.map(d => d.cisto.length), DOK_BUDGET_SKUPAJ);
+                for (let i = 0; i < prebranaBesedila.length; i++) {
+                    const { l } = prebranaBesedila[i];
+                    let { cisto } = prebranaBesedila[i];
+                    const meja = meje[i];
+                    if (cisto.length > meja) {
+                        log.warning(`[Detail] Dokument skrajšan s ${cisto.length} na ${meja} znakov (pravičen delež po dolžini): ${l.tekst || l.url}`);
+                        cisto = cisto.substring(0, meja) + `\n[... dokument skrajšan pri ${meja} znakih, izvirnik ${cisto.length} znakov ...]`;
+                    }
+                    dokVsebina += `\n\n=== DOKUMENT: ${l.tekst || l.url} ===\n${cisto}`;
+                    dokViri.push(l.url);
                 }
             } else {
                 log.info('[Detail] preskociPdf=true — dokumenti se ne berejo (samo HTML vsebina strani).');
