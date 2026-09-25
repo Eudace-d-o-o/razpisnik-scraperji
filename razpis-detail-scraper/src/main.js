@@ -16,7 +16,7 @@ import mammoth from 'mammoth';
 import * as cheerio from 'cheerio';
 import { ProxyAgent } from 'undici';
 import { razdeliDokumentniBudget } from './deli-dokumentni-budget.js';
-import { pretvoriUradniListPdf, izrezSpremembo, najdiSpremembeLinke } from './uradni-list.js';
+import { najdiSpremembeLinke, poisciOznakoRazpisa, preberiSpremembo } from './uradni-list.js';
 
 await Actor.init();
 
@@ -515,38 +515,30 @@ if (!rezultat) {
                 // — dodajo se v ISTI seznam PRED delitvijo prostora, da so tudi one del
                 // pravičnega deleža po dolžini. So kratke (nekaj sto do nekaj tisoč znakov),
                 // zato v praksi dobijo celoto.
+                //
+                // NIKOLI ne sme podreti zajema CELOTNEGA razpisa (nasprotni pregled 25. 9. 2026:
+                // prenos PDF-ja je bil prej zunaj try/catch — izpad uradni-list.si je pomenil 3
+                // ponovitve in "Ni rezultata" za CEL razpis, čeprav bi zajem brez sprememb
+                // uspel). preberiSpremembo zato nikoli ne vrže naprej (glej uradni-list.js).
                 const spremembeLinki = najdiSpremembeLinke($, request.url);
                 if (spremembeLinki.length) {
                     log.info(`[UL] Najdenih povezav "Sprememba*" na uradni-list.si: ${spremembeLinki.length}`);
-                }
-                for (const s of spremembeLinki) {
-                    const nazivPovezave = s.tekst.replace(/[.,]\s*$/, ''); // "Sprememba št. 6," -> "Sprememba št. 6"
-                    const oznakaUL = `${nazivPovezave} (Uradni list RS, št. ${s.stevilka}/${s.leto})`;
-                    const pdfR = await fetch(s.url, { headers: { 'User-Agent': 'Mozilla/5.0' } });
-                    if (!pdfR.ok) {
-                        log.warning(`[UL] HTTP ${pdfR.status} za ${oznakaUL}: ${s.url}`);
-                        continue;
+                    // Uradna oznaka razpisa (npr. "3301-1/2024-SRRS-23") iz že prebranih
+                    // dokumentov strani (brez dodatnega omrežnega klica) — primarno merilo za
+                    // ujemanje spodaj. Brez nje se pade na rezervno pot (cel naziv, glej
+                    // izrezSpremembo v uradni-list.js).
+                    const oznakaRazpisa = poisciOznakoRazpisa(prebranaBesedila);
+                    if (!oznakaRazpisa) {
+                        log.warning(`[UL] Uradne oznake razpisa "${naslov}" ni bilo mogoče določiti iz že prebranih dokumentov — ujemanje bo (manj zanesljivo) samo po celem nazivu.`);
                     }
-                    const pdfBuffer = Buffer.from(await pdfR.arrayBuffer());
-                    if (pdfBuffer.length > 15 * 1024 * 1024) {
-                        log.warning(`[UL] Preveliko (${pdfBuffer.length} B) za ${oznakaUL}: ${s.url}`);
-                        continue;
+                    for (const s of spremembeLinki) {
+                        const r = await preberiSpremembo(s, naslov, oznakaRazpisa);
+                        if (r.odsek) {
+                            prebranaBesedila.push({ l: { url: s.url, tekst: r.oznakaUL }, cisto: r.odsek.replace(/\s+/g, ' ').trim() });
+                        } else {
+                            log.warning(`[UL] ${r.oznakaUL} (${s.url}): ${r.napaka}`);
+                        }
                     }
-                    let besediloUL;
-                    try {
-                        besediloUL = await pretvoriUradniListPdf(pdfBuffer);
-                    } catch (e) {
-                        log.warning(`[UL] Napaka pri branju ${oznakaUL} (${s.url}): ${e.message}`);
-                        continue;
-                    }
-                    const odsek = izrezSpremembo(besediloUL, naslov);
-                    if (!odsek) {
-                        // Raje nič kot tuja objava — brez ujemanja po nazivu IN uradni oznaki
-                        // razpisa se v vsebino NIČ ne doda.
-                        log.warning(`[UL] Ni najdenega ujemajočega odseka za "${naslov}" v ${oznakaUL} (${s.url})`);
-                        continue;
-                    }
-                    prebranaBesedila.push({ l: { url: s.url, tekst: oznakaUL }, cisto: odsek.replace(/\s+/g, ' ').trim() });
                 }
 
                 const meje = razdeliDokumentniBudget(prebranaBesedila.map(d => d.cisto.length), DOK_BUDGET_SKUPAJ);

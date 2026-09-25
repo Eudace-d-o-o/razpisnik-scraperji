@@ -1,4 +1,5 @@
-// Uradni list: branje PDF-ja in izrez spremembe posameznega razpisa (25. 9. 2026).
+// Uradni list: branje PDF-ja in izrez spremembe posameznega razpisa (25. 9. 2026, popravljeno
+// po nasprotnem pregledu 25. 9. 2026 — glej opombe pri posameznih popravkih spodaj).
 //
 // ZAKAJ TA MODUL SPLOH OBSTAJA: SRRS in EKO sklad spremembe svojih razpisov pogosto objavijo
 // IZKLJUČNO v Uradnem listu, ne na lastni strani (izmerjeno 25. 9. 2026: 7 od 28 odprtih
@@ -19,8 +20,9 @@ import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf.mjs';
 
 // Čista funkcija (brez mreže) — pretvori buffer PDF-ja Uradnega lista v besedilo. Testirana
 // ločeno v uradni-list.test.js (izrezSpremembo) na ročno pripravljenih odsekih besedila; ta
-// funkcija je preizkušena ROČNO na treh dejanskih številkah UL (glej poročilo naloge), ker
-// zahteva binarne PDF datoteke, ki niso del repozitorija.
+// funkcija je preizkušena ROČNO na dejanskih številkah UL (glej poročilo naloge in poročilo
+// nasprotnega pregleda — 16 številk UL, brez napak), ker zahteva binarne PDF datoteke, ki niso
+// del repozitorija.
 export async function pretvoriUradniListPdf(buffer) {
     const data = new Uint8Array(buffer);
     const doc = await pdfjsLib.getDocument({ data, verbosity: 0 }).promise;
@@ -53,26 +55,83 @@ export async function pretvoriUradniListPdf(buffer) {
     return besedilo;
 }
 
-// Čista funkcija — znotraj CELOTNE številke UL poišče SAMO odsek, ki se nanaša na TA razpis:
-// ujemanje po nazivu produkta IN uradni oznaki razpisa, obe navedeni SKUPAJ v uvodnem stavku
-// vsake SRRS objave ("... za finančni produkt - <naziv>, št. <oznaka razpisa>, objavljenega
-// v..."). Meje med posameznimi objavami v isti številki UL so zaporedne številke objave
-// ("Ob-<zap>/<leto>", v svoji lastni vrstici) — splošna meja (katera koli agencija) omejuje
-// odsek na koncu, ozka SRRS meja ("...-SRRS-NN Ob-...") ga najde na začetku. Vrne besedilo
-// odseka ali null, če ujemajočega odseka ni (raje nič kot tuja objava).
-export function izrezSpremembo(besedilo, naziv) {
-    const SPLOSNA_MEJA = /^[^\n]{0,100}Ob-\d+\/\d{2}\.?\s*$/gm;
-    const splosneMeje = [];
-    let sm;
-    while ((sm = SPLOSNA_MEJA.exec(besedilo)) !== null) splosneMeje.push(sm.index);
+function normaliziraj(t) {
+    return (t || '').replace(/\s+/g, ' ').trim().toLowerCase();
+}
 
-    const MEJA_SRRS = /(?:Št\.\s+)?[\d.\/-]+SRRS-\d+\s+Ob-\d+\/\d+/g;
+// Preveri, ali se "nazivL" v "nazivDel" pojavi kot CEL naziv, ne kot podniz DALJŠEGA imena —
+// za njim mora slediti meja (konec niza, vejica, "ter"/"in" pred zadnjim naštetim produktom,
+// ali "št."). BREZ tega bi iskanje "BIZI Krožno" pobralo spremembo za "BIZI Krožno Obmejna"
+// (izmerjeno pri nasprotnem pregledu 25. 9. 2026 — .includes() je pravi podniz sprejel kot
+// ujemanje). "ter"/"in" sta potrebna, ker SRRS eno spremembo pogosto objavi SKUPAJ za več
+// produktov naenkrat ("AGRO PF, BIZI PF, LOKALNO PF ter NVO PF") — brez teh dveh besed kot
+// veljavne meje bi zavrnili ravno predzadnji produkt v seznamu (izmerjeno: "LOKALNO PF (2024)"
+// je bil edini od 16 strani s spremembami, ki ni dobil NITI ENE — vseh 5 njegovih sprememb je
+// bilo objavljenih izključno v takih skupnih seznamih).
+function celNazivUjema(nazivDel, nazivL) {
+    if (!nazivL) return false;
+    const i = nazivDel.indexOf(nazivL);
+    if (i === -1) return false;
+    const zaNjim = nazivDel.slice(i + nazivL.length);
+    return zaNjim === '' || /^\s*(,|ter\b|in\b|št\.)/i.test(zaNjim);
+}
+
+// Poišče meje MED VSEMI objavami v tej številki UL (katerekoli agencije, ne le SRRS) — vsaka
+// objava ima svojo zaporedno številko "Ob-<st>/<leto>".
+//
+// POPRAVEK (nasprotni pregled 25. 9. 2026): kadar prejšnja objava nima zaključnega stavka
+// (samo tabela/kratek sklep brez podpisa), se njen zadnji del ZLEPI z glavo naslednje objave
+// NA ISTO fizično vrstico PDF-ja (npr. "... znižanja do porabe sredstev Št. 3301-1/2023-SRRS-53
+// Ob-3539/24" — potrjeno v Uradnem listu, št. 108/2024). Meja, ki bi bila na ZAČETKU cele
+// vrstice, bi tedaj odrezala "znižanja do porabe sredstev" od prejšnje objave. Kadar glava
+// vsebuje "Št. <oznaka> Ob-...", je meja zato na ZAČETKU "Št.", ne na začetku fizične vrstice.
+// Glave BREZ "Št." (golo ime agencije ali sam "Ob-...") ostanejo vezane na začetek vrstice —
+// v vseh doslej pregledanih primerih (16 številk UL) so bile taka vedno samostojna vrstica.
+function najdiSplosneMeje(besedilo) {
+    const meje = new Set();
+    const ZGLAVJE_S_ST = /Št\.\s+\S+\s+Ob-\d+\/\d{2}\.?/g;
+    let m;
+    while ((m = ZGLAVJE_S_ST.exec(besedilo)) !== null) meje.add(m.index);
+
+    const ZGLAVJE_BREZ_ST = /^([^\n]{0,100})(Ob-\d+\/\d{2}\.?)\s*$/gm;
+    while ((m = ZGLAVJE_BREZ_ST.exec(besedilo)) !== null) {
+        // Če vrstica že vsebuje natančnejši vzorec ZGLAVJE_S_ST, ta (zgoraj) že daje pravo
+        // mejo — cela vrstica lahko vsebuje še rep PREJŠNJE objave pred glavo (glej opombo
+        // zgoraj), zato se v tem primeru ne uporabi meja na začetku cele vrstice.
+        if (/Št\./i.test(m[1])) continue;
+        meje.add(m.index);
+    }
+    return [...meje].sort((a, b) => a - b);
+}
+
+// Čista funkcija — znotraj CELOTNE številke UL poišče SAMO odsek, ki se nanaša na TA razpis.
+//
+// PRIMARNO merilo (nasprotni pregled 25. 9. 2026): TOČNO ujemanje uradne oznake razpisa
+// (`oznakaRazpisa`, npr. "3301-1/2024-SRRS-23"), izluščene iz že prebranega razpisnega
+// dokumenta ali citata na strani (glej poisciOznakoRazpisa v main.js). Prejšnja različica je
+// oznako izluščila, a je NI uporabila za ujemanje — samo naziv kot podniz, kar je "BIZI Krožno"
+// pomotoma ujelo s spremembo za "BIZI Krožno Obmejna".
+//
+// REZERVA, kadar oznake ni bilo mogoče določiti: ujemanje SAMO po CELEM nazivu (glej
+// celNazivUjema) — brez ujemanja niti oznake niti celega naziva se NIČ ne doda (raje nič kot
+// tuja objava).
+export function izrezSpremembo(besedilo, naziv, oznakaRazpisa) {
+    const splosneMeje = najdiSplosneMeje(besedilo);
+
+    // \s* pred "SRRS": oznaka je lahko prelomljena čez vrstico PDF-ja tik pred "SRRS-NN"
+    // (npr. "3301-1/2024-\nSRRS-28", potrjeno v Uradnem listu, št. 39/2025) — brez tega bi
+    // znak razred [\d.\/-] (ki \n ne vsebuje) prelom ustavil in cela objava ne bi bila najdena.
+    const MEJA_SRRS = /(?:Št\.\s+)?[\d.\/-]+\s*SRRS-\d+\s+Ob-\d+\/\d+/g;
     const srrsMeje = [];
     let m;
     while ((m = MEJA_SRRS.exec(besedilo)) !== null) srrsMeje.push(m.index);
     if (srrsMeje.length === 0) return null;
 
-    const nazivL = (naziv || '').replace(/\s+/g, ' ').toLowerCase().trim();
+    // Naslov strani ima lahko letnico v oklepaju ("NVO PF (2024)", "AGRO PF (2024)"), ki je v
+    // Uradnem listu ni — odstrani pred primerjavo (nasprotni pregled 25. 9. 2026).
+    const nazivBrezLeta = (naziv || '').replace(/\s*\(\d{4}\)\s*$/, '');
+    const nazivL = normaliziraj(nazivBrezLeta);
+
     for (const zacetek of srrsMeje) {
         const konecSplosni = splosneMeje.find((idx) => idx > zacetek);
         const konec = konecSplosni !== undefined ? konecSplosni : besedilo.length;
@@ -80,24 +139,66 @@ export function izrezSpremembo(besedilo, naziv) {
         // Mora biti označena kot "Sprememba" (ne izvirna objava razpisa ali kaj drugega).
         if (!/^[^\n]*\n\s*Sprememb/i.test(odsek)) continue;
 
-        const uvod = odsek.match(/produkt\w*\s*[–-]\s*(.+?),\s*št\.\s*([\d.\/-]+SRRS-\d+)/i);
+        // 's' (dotall): naziv produkta se lahko lomi čez vrstico PDF-ja ("– BIZI\nOPO Turizem
+        // ter BIZI Turizem") — brez dotall "." ne bi segel čez prelom in ujemanja sploh ne bi bilo.
+        const uvod = odsek.match(/produkt\w*\s*[–-]\s*(.+?),\s*št\.\s*([\d.\/-]+\s*SRRS-\d+)/is);
         if (!uvod) continue;
-        const nazivDel = uvod[1].replace(/\s+/g, ' ').toLowerCase();
-        if (!nazivDel.includes(nazivL)) continue;
+        // Odstrani morebiten presledek/prelom vrstice, ki ga je uvod dopustil ZNOTRAJ oznake
+        // same (glej opombo pri MEJA_SRRS) — za primerjavo mora biti oznaka strnjena.
+        const oznakaOdseka = uvod[2].replace(/\s+/g, '');
 
-        // Navzkrižna preverba: če odsek vsebuje ŠE EN neodvisen zapis imena produkta (običajno
-        // v stavku "Skupni razpisani znesek finančnega produkta <naziv> je/iz vira ..."), se
-        // mora ujemati z istim nazivom. Uradni list, št. 108/2024 (SRRS-41) je znan izjemen
-        // primer, kjer uvodni stavek napačno poimenuje "AGRO FI mladi", telo pa dejansko
-        // govori o "AGRO FI mikro" — brez te preverbe bi napačnemu razpisu pripisali tujo
-        // vsebino. V takem primeru odsek raje izpustimo (nadaljuj iskanje/vrni null), kot da
-        // napačno pripišemo vsebino drugega produkta.
-        const drugiZapis = odsek.match(/produkt\w*\s+(.+?)\s+(?:je|iz vira)[:\s]/i);
-        if (drugiZapis) {
-            const drugiNazivL = drugiZapis[1].replace(/\s+/g, ' ').toLowerCase();
-            if (!drugiNazivL.includes(nazivL)) continue;
+        if (oznakaRazpisa) {
+            // Oznaka je formalna referenca, manj podvržena napakam kot prosto besedilo naziva
+            // v uvodnem stavku — ko se ujema, ji zaupamo (naziv je le "dodatna preverba" in ne
+            // more preglasiti pravilne oznake).
+            if (oznakaOdseka !== oznakaRazpisa) continue;
+        } else {
+            const nazivDel = normaliziraj(uvod[1]);
+            // Prelom naziva čez vrstico PDF-ja ("– BIZI\nOPO Turizem ter BIZI Turizem") je
+            // normaliziraj() že pretvoril v presledek, zato primerjava deluje ne glede na prelom.
+            if (!celNazivUjema(nazivDel, nazivL)) continue;
+
+            // Navzkrižna preverba SAMO na rezervni poti (brez znane oznake): če odsek vsebuje
+            // ŠE EN neodvisen zapis imena produkta (navadno v stavku "Skupni razpisani znesek
+            // finančnega produkta <naziv> je/iz vira ..."), se mora ujemati z istim nazivom.
+            // Uradni list, št. 108/2024 (SRRS-41) je znan izjemen primer, kjer uvodni stavek
+            // napačno poimenuje "AGRO FI mladi", telo pa dejansko govori o "AGRO FI mikro" —
+            // brez te preverbe bi na rezervni poti (brez oznake) napačnemu razpisu pripisali
+            // tujo vsebino.
+            // Vzorec MORA vsebovati "znesek finančnega produkt..." (ne katero koli drugo
+            // pojavitev besede "produkt", npr. iz uvodnega stavka "... za finančni produkt –
+            // <naziv>, št. ...") — sicer bi .match() vrnil PRVO pojavitev in zajel ves tekst
+            // med njo in dejansko drugo omembo, kar je nekoč napačno vsebovalo OBA naziva
+            // hkrati in preverbo naredilo neučinkovito.
+            const drugiZapis = odsek.match(/znesek\s+finančnega\s+produkt\w*\s+(.+?)\s+(?:je\b|iz vira)/is);
+            if (drugiZapis) {
+                const drugiNazivL = normaliziraj(drugiZapis[1]);
+                if (drugiNazivL !== nazivL && !celNazivUjema(drugiNazivL, nazivL)) continue;
+            }
         }
         return odsek;
+    }
+    return null;
+}
+
+// Poišče URADNO OZNAKO tega razpisa (npr. "3301-1/2024-SRRS-23") med že prebranimi dokumenti
+// strani — dokument "javni razpis"/"javni poziv" vedno v uvodu navede svojo lastno oznako.
+// Brez dodatnega omrežnega klica (dokumenti so že prebrani za drug namen). Vrne null, če
+// oznake ni bilo mogoče najti nikjer — takrat izrezSpremembo pade na rezervno pot (cel naziv).
+export function poisciOznakoRazpisa(prebranaBesedila) {
+    // \s* pred "SRRS": glej opombo pri MEJA_SRRS v izrezSpremembo — enak prelom vrstice se
+    // lahko pojavi tudi v tem, ločeno prebranem dokumentu.
+    const RE = /\d{2,4}[.\/-]\d{1,3}\/\d{4}-\s*SRRS-\d+/;
+    const prioritetni = [];
+    const ostali = [];
+    for (const d of prebranaBesedila || []) {
+        const oznacba = (d?.l?.klasifikacija || d?.l?.tekst || '');
+        if (/javni.?razpis|javni.?poziv/i.test(oznacba)) prioritetni.push(d);
+        else ostali.push(d);
+    }
+    for (const d of [...prioritetni, ...ostali]) {
+        const m = (d.cisto || '').match(RE);
+        if (m) return m[0].replace(/\s+/g, '');
     }
     return null;
 }
@@ -123,4 +224,35 @@ export function najdiSpremembeLinke($, baseUrl) {
         najdeno.push({ url: absUrl, tekst, leto: m[1], stevilka: String(parseInt(m[2], 10)) });
     });
     return najdeno;
+}
+
+// Prenese in izreže EN dokument spremembe za dani razpis — NIKOLI ne vrže naprej. Vsaka napaka
+// (izpad omrežja, časovna omejitev, prevelika datoteka, neveljaven PDF, brez ujemanja) se
+// ZABELEŽI kot rezultat (napaka: <opis>) in korak se PRESKOČI; zajem CELOTNEGA razpisa teče
+// naprej z vsemi drugimi dokumenti.
+//
+// NAJHUJŠA NAPAKA, POPRAVLJENA PO NASPROTNEM PREGLEDU 25. 9. 2026: prenos (fetch/arrayBuffer)
+// je bil PREJ zunaj try/catch — ob izpadu uradni-list.si je zajem CELOTNEGA razpisa padel (3
+// ponovitve, "Ni rezultata"), čeprav bi zajem brez sprememb uspel. Dokazano s preizkusom
+// uradni-list.test.js (nadomestek, ki vrže napako, in nadomestek, ki nikoli ne odgovori — glej
+// spodaj `casovnaOmejitevMs`, privzeto 30 s prek AbortSignal.timeout).
+export async function preberiSpremembo(s, naziv, oznakaRazpisa, opcije = {}) {
+    const { fetchImpl = fetch, casovnaOmejitevMs = 30000, maxBajtov = 15 * 1024 * 1024 } = opcije;
+    const nazivPovezave = (s.tekst || '').replace(/[.,]\s*$/, ''); // "Sprememba št. 6," -> "Sprememba št. 6"
+    const oznakaUL = `${nazivPovezave} (Uradni list RS, št. ${s.stevilka}/${s.leto})`;
+    try {
+        const pdfR = await fetchImpl(s.url, {
+            headers: { 'User-Agent': 'Mozilla/5.0' },
+            signal: AbortSignal.timeout(casovnaOmejitevMs),
+        });
+        if (!pdfR.ok) return { oznakaUL, napaka: `HTTP ${pdfR.status}` };
+        const pdfBuffer = Buffer.from(await pdfR.arrayBuffer());
+        if (pdfBuffer.length > maxBajtov) return { oznakaUL, napaka: `Preveliko (${pdfBuffer.length} B)` };
+        const besedilo = await pretvoriUradniListPdf(pdfBuffer);
+        const odsek = izrezSpremembo(besedilo, naziv, oznakaRazpisa);
+        if (!odsek) return { oznakaUL, napaka: 'ujemajočega odseka ni (raje nič kot tuja objava)' };
+        return { oznakaUL, odsek };
+    } catch (e) {
+        return { oznakaUL, napaka: e.message };
+    }
 }
