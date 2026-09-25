@@ -483,16 +483,36 @@ if (!rezultat) {
                 // pogovor z uporabnikom 2026-07-16.
                 const zaGlobinskoBranje = dokLinki.filter(l => l.prioriteta > 0).slice(0, 8);
                 log.info(`[Detail] Najdenih dokumentnih linkov (PDF/Word): ${dokLinki.length}, za globinsko branje: ${zaGlobinskoBranje.length}`);
-                for (const l of zaGlobinskoBranje) {
+                // NAPAKA (izmerjena 25. 9. 2026 pri P7L 2026 — Podjetniški sklad): dokumenti so se
+                // prej nizali brez omejitve, skupna vsebina pa se je šele na koncu (glej
+                // VARNOSTNI_LIMIT spodaj) odrezala pri 200.000 znakih. Kadar so prvi dokumenti v
+                // vrsti sami po sebi obsežni, je zadnji dokument dobil samo drobtinice ali nič —
+                // pri P7L 2026 sta "Razpisna dokumentacija" (151.135 zn.) in "Javni razpis"
+                // (48.741 zn.) porabila skoraj ves prostor, "Posebni pogoji" (dejansko ~40.700 zn.,
+                // vsebuje pravilo "največ ena vloga, en kredit") pa je v shranjeni vsebini ostal
+                // dolg samo 80–94 znakov. Enak vzorec je pri pregledu baze 25. 9. 2026 opažen pri
+                // še vsaj 20 drugih razpisih (ARIS, GOVSI, BORZEN, SRIPS) — sistematično prizadene
+                // dokumente z nižjo prioriteto (npr. "posebni pogoji" = 2), ker se berejo ZADNJI.
+                // POPRAVEK: vsak dokument dobi svoj pravičen delež skupnega dokumentnega budgeta,
+                // izračunan vnaprej iz števila dokumentov v vrsti — dokument, ki je krajši od
+                // svojega deleža, ODDA neporabljeni prostor naslednjim (da kratki dokumenti, kot je
+                // ROKOVNIK, ne "izgubijo" prostora, ki ga ne potrebujejo).
+                const DOK_BUDGET_SKUPAJ = 180000; // pod VARNOSTNI_LIMIT (200000) — pusti prostor za HTML stran/rokovnik
+                let dokBudgetPreostanek = DOK_BUDGET_SKUPAJ;
+                for (let i = 0; i < zaGlobinskoBranje.length; i++) {
+                    const l = zaGlobinskoBranje[i];
+                    const stePreostalihDokumentov = zaGlobinskoBranje.length - i;
+                    const delezZaTegaDokumenta = Math.max(1000, Math.floor(dokBudgetPreostanek / stePreostalihDokumentov));
                     const txt = await prebrDokument(l.url);
                     if (txt && txt.length > 50) {
-                        const cisto = txt.replace(/\s+/g, ' ').trim();
-                        // Razpisni dokumenti so lahko obsežni (100+ strani) — beremo CELOTNO vsebino,
-                        // ne omejujemo z znakovnim limitom tukaj. Claude ima dovolj velik context window
-                        // da prebere celoten dokument in temeljito poišče zahtevane podatke (zneski,
-                        // pogoji, roki...), namesto da zanesljive podatke izgubimo z vnaprejšnjim rezanjem.
+                        let cisto = txt.replace(/\s+/g, ' ').trim();
+                        if (cisto.length > delezZaTegaDokumenta) {
+                            log.warning(`[Detail] Dokument skrajšan s ${cisto.length} na ${delezZaTegaDokumenta} znakov (pravičen delež pri ${stePreostalihDokumentov} preostalih dokumentih): ${l.tekst || l.url}`);
+                            cisto = cisto.substring(0, delezZaTegaDokumenta) + `\n[... dokument skrajšan pri ${delezZaTegaDokumenta} znakih, izvirnik ${cisto.length} znakov ...]`;
+                        }
                         dokVsebina += `\n\n=== DOKUMENT: ${l.tekst || l.url} ===\n${cisto}`;
                         dokViri.push(l.url);
+                        dokBudgetPreostanek -= cisto.length;
                     }
                 }
             } else {
