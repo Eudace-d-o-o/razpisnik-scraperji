@@ -1,0 +1,9 @@
+{
+  "actorSpecification": 1,
+  "name": "podjetniski-portal-scraper",
+  "title": "Podjetniški portal scraper",
+  "description": "Scraper razpisov in napovedi razpisov s Podjetniškega portala (podjetniski-portal.si, SPIRIT Slovenija)",
+  "version": "1.0",
+  "input": "./input_schema.json",
+  "dockerfile": "../Dockerfile"
+}
