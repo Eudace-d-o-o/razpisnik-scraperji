@@ -27,6 +27,7 @@ const PRIROCNIK = '/moj-spletni-prirocnik/clanki';
 const NAJVEC_STRANI_NA_LETO = 15;   // varovalka pred neskončnim listanjem (leto ima ~4 strani)
 const STAROST_DNI = 400;            // starejših objav ne beremo: tudi najdaljši razpisi se zaprejo prej
 const ZAMIK_MS = 300;               // vljuden razmik med zahtevki na isti strežnik
+const HKRATI = 3;                   // največ toliko hkratnih zahtevkov na isti strežnik
 const NAJVEC_ZNAKOV_VSEBINE = 2000;
 
 const cist = (t) => String(t || '').replace(/\s+/g, ' ').trim();
@@ -95,6 +96,17 @@ function datumObjave(niz) {
     return d || null;
 }
 
+// Naziv odloča prvi (»Garancije in posojila« je garancija, tudi če opis omenja nepovratni del);
+// šele brez oznake v nazivu pogledamo, ali predmet ali vrednost razpisa izrecno govorita o nepovratnih
+// sredstvih (»Znesek razpisanih nepovratnih sredstev znaša …«).
+function tipFinanciranja(naziv, polja) {
+    if (/garancij/i.test(naziv)) return 'Garancija';
+    if (/kredit|posojil/i.test(naziv)) return 'Kredit';
+    const opis = [polja['Predmet razpisa'], polja['Namen razpisa'], polja['Vrednost razpisa']].filter(Boolean).join(' ');
+    if (/nepovratn/i.test(opis) && !/kredit|posojil|garancij/i.test(opis)) return 'Nepovratna sredstva';
+    return null;
+}
+
 /**
  * Stran posameznega razpisa ali članka. Polja so odstavki z odebeljeno oznako
  * (<p><b>Rok:</b> …</p>); ista oznaka se lahko ponovi (dvakrat »Predmet razpisa«), zato jih združimo.
@@ -161,8 +173,8 @@ function razcleniPodrobnosti(html, url, jeClanek = false, dan = danes()) {
         'Naziv razpisa': naziv,
         'URL': url,
         'Status': status,
-        // Tip zapišemo le, kadar ga potrjuje naziv; sicer ostane prazen (portal ne ugiba).
-        'Tip financiranja': /garancij/i.test(naziv) ? 'Garancija' : (/kredit|posojil/i.test(naziv) ? 'Kredit' : null),
+        // Tip zapišemo le, kadar ga potrjuje naziv ali opis sredstev; sicer ostane prazen (portal ne ugiba).
+        'Tip financiranja': tipFinanciranja(naziv, polja),
         'Rok prijave': rok,
         'Datum zaznave': vNiz(dan),
         'Sredstva': polja['Vrednost razpisa'] || null,
@@ -252,15 +264,19 @@ Actor.main(async () => {
     const rezultati = [];
     let napak = 0;
     const naloge = [...razpisi.map((url) => ({ url, jeClanek: false })), ...clanki.map((url) => ({ url, jeClanek: true }))];
-    for (const { url, jeClanek } of naloge) {
-        try {
-            const zapis = razcleniPodrobnosti(await preberi(url), url, jeClanek);
-            if (zapis) rezultati.push(zapis);
-            else { napak++; console.error(`[PODJPORTAL] NERAZČLENJENO: ${url}`); }
-        } catch (e) {
-            napak++;
-            console.error(`[PODJPORTAL] NAPAKA pri ${url}: ${e.message}`);
-        }
+    // Strani beremo po HKRATI naenkrat. Zaporedno je 110 strani trajalo 156 s (izmerjeno 6. 10. 2026),
+    // nočni zajem portala pa na posamezen vir čaka največ 240 s.
+    for (let i = 0; i < naloge.length; i += HKRATI) {
+        await Promise.all(naloge.slice(i, i + HKRATI).map(async ({ url, jeClanek }) => {
+            try {
+                const zapis = razcleniPodrobnosti(await preberi(url), url, jeClanek);
+                if (zapis) rezultati.push(zapis);
+                else { napak++; console.error(`[PODJPORTAL] NERAZČLENJENO: ${url}`); }
+            } catch (e) {
+                napak++;
+                console.error(`[PODJPORTAL] NAPAKA pri ${url}: ${e.message}`);
+            }
+        }));
         await pocakaj(ZAMIK_MS);
     }
 

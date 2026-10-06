@@ -56,6 +56,7 @@ assert.strictEqual(razpis['Izvorna domena'], 'hrastnik.si');
 assert.ok(/hrastnik\.si\/obcinska-uprava\/javni-razpisi/.test(razpis['Izvorni URL']), 'izvorni URL je stran razpisa pri občini');
 assert.ok(/48\.825,00/.test(razpis.Sredstva));
 assert.strictEqual(razpis['Datum objave'], '01.06.2026');
+assert.strictEqual(razpis['Tip financiranja'], 'Nepovratna sredstva');
 
 console.log('\n— članek v priročniku (IF26) —');
 const clanek = f.razcleniPodrobnosti(vzorec('clanek-if26'), 'https://www.podjetniski-portal.si/moj-spletni-prirocnik/clanki/75756', true, DAN);
