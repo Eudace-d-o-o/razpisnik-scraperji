@@ -62,7 +62,10 @@ function datumiIzBesedila(besedilo) {
         const mesec = z[2] ? Number(z[2]) : MESECI[z[3].slice(0, 3).toLowerCase()];
         const leto = Number(z[4]);
         if (!mesec || dan < 1 || dan > 31 || mesec > 12) continue;
-        datumi.push(new Date(leto, mesec - 1, dan));
+        const datum = new Date(leto, mesec - 1, dan);
+        // Neobstoječ datum (»31. 9. 2026«) bi se tiho prelil v 1. 10.; takega ne vzamemo.
+        if (datum.getMonth() !== mesec - 1) continue;
+        datumi.push(datum);
     }
     return datumi;
 }
@@ -74,15 +77,23 @@ function datumiIzBesedila(besedilo) {
  * - Besedilo pove samo začetek (»Prijava na razpis se začne 27. 7. 2026«, »možna od 4. 8. 2026«):
  *   to ni rok. Če začetek še prihaja, je razpis napovedan, sicer stanja ne poznamo — ne ugibamo,
  *   da je odprt.
- * - Brez datuma: stanja ne poznamo.
+ * - Brez datuma ali z rokom, štetim od objave (»30 dni od objave v Uradnem listu«): stanja ne poznamo.
+ * - Datumi, ki niso rok (odpiranje vlog, poraba sredstev, objava), se ne upoštevajo — sicer bi
+ *   »sredstva porabiti do 31. 10. 2027« postal rok (nasprotni pregled, 6. 10. 2026).
  */
 function rokInStatus(besedilo, dan = danes()) {
-    const datumi = datumiIzBesedila(besedilo);
+    const t = String(besedilo || '').toLowerCase();
+    if (/dni\s+(od|po)\s+(dneva\s+)?objav/.test(t)) return { rok: null, status: 'Ni razvidno' };
+    const brezDrugihDatumov = t.replace(
+        // Okno 30 znakov: »objave razpisa do dneva … najkasneje do 3. 9. 2027« je rok in ostane.
+        /(odpiranj\w*|porabi\w*|objav\w*|z dne)[^;]{0,30}?\d{1,2}\.\s*(?:\d{1,2}\.|[a-zčšž]{3,}\s)\s*\d{4}/g, ' ');
+    const datumi = datumiIzBesedila(brezDrugihDatumov);
     if (!datumi.length) return { rok: null, status: 'Ni razvidno' };
-    const t = String(besedilo).toLowerCase();
+    // »do porabe sredstev« ni rok in ne pomeni, da besedilo pove konec.
+    const brezPorabe = brezDrugihDatumov.replace(/do\s+porabe/g, ' ');
     const samoZacetek = datumi.length === 1
-        && /(začne|od\s+\d|od\s+dneva|poteka od)/.test(t)
-        && !/(\bdo\b|najkasneje|skrajni|rok za oddajo|rok je|rok:)/.test(t);
+        && /(začne|od\s+\d|od\s+dneva|poteka od)/.test(brezPorabe)
+        && !/(\bdo\b|najkasneje|skrajni|rok za oddajo|rok je|rok:)/.test(brezPorabe);
     if (samoZacetek) {
         return { rok: null, status: datumi[0] > dan ? 'Napovedan' : 'Ni razvidno' };
     }

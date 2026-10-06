@@ -30,6 +30,13 @@ const primeri = [
     ['Prijava na razpis se začne 27. 11. 2026', null, 'Napovedan'],
     ['Do porabe sredstev.', null, 'Ni razvidno'],
     ['', null, 'Ni razvidno'],
+    // Najdbe nasprotnega pregleda, 6. 10. 2026:
+    ['Razpis se začne 1. 11. 2026 in traja do porabe sredstev', null, 'Napovedan'],
+    ['Odpiranje vlog bo 20. 11. 2026, rok za oddajo 15. 11. 2026', '15.11.2026', 'Odprt'],
+    ['Prijave so mogoče do 30. 11. 2026, sredstva je treba porabiti do 31. 10. 2027', '30.11.2026', 'Odprt'],
+    ['Rok: 30 dni od objave v Uradnem listu (objava 1. 10. 2026)', null, 'Ni razvidno'],
+    ['Rok za oddajo je 31. 9. 2026', null, 'Ni razvidno'],
+    ['Rok za oddajo vlog je od 1. 9. 2026 do 31. 12. 2026', '31.12.2026', 'Odprt'],
 ];
 for (const [besedilo, rok, status] of primeri) {
     const izid = f.rokInStatus(besedilo, DAN);
