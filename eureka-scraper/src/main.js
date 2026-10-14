@@ -83,7 +83,13 @@ function razcleni(html, url, dan) {
     const vsebina = cist($('#about-this-call').text()).replace(/^About this call\s*/, '');
     let status;
     let rok = null;
-    if (konec) {
+    // Stalni razpis ima namesto roka nadomestni konec daleč v prihodnosti (»Open call for Network
+    // Projects«: »End 1 January 2030«); portal bi ga izpisal kot rok »še 1.200 dni«. Takega štejemo za
+    // odprtega brez roka.
+    const stalni = konec && konec.getFullYear() > dan.getFullYear() + 2;
+    if (stalni) {
+        status = zacetek && zacetek > dan ? 'Napovedan' : 'Odprt';
+    } else if (konec) {
         rok = vNiz(konec);
         status = konec < dan ? 'Zaprt' : (zacetek && zacetek > dan ? 'Napovedan' : 'Odprt');
     } else if (zacetek && zacetek > dan) {
@@ -104,7 +110,8 @@ function razcleni(html, url, dan) {
 
     const deli = [];
     if (zacetek) deli.push(`Odprtje: ${vNiz(zacetek)}`);
-    if (konec) deli.push(`Rok: ${vNiz(konec)}`);
+    if (stalni) deli.push('Stalno odprt razpis (prijave ves čas)');
+    else if (konec) deli.push(`Rok: ${vNiz(konec)}`);
     if (drzave.length) deli.push(`Sodelujoče države: ${drzave.join(', ')}`);
     if (vsebina) deli.push(vsebina);
 

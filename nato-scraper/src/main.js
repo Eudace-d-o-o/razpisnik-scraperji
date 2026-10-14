@@ -8,7 +8,10 @@
  * - DIANA: diana.nato.int je za samodejno branje zaprta s preverbo Cloudflare (»Just a moment…«,
  *   izmerjeno 13. 10. 2026, tudi zemljevid strani). Te zaščite ne obhajamo. Nove izzive DIANA nato.int
  *   objavi kot novico z rokom v opisu (»submit proposals … until 12:00 UTC on Friday 11 July 2025«),
- *   zato DIANA, in poleg nje tudi nove razpise SPS, beremo iz zemljevida strani nato.int.
+ *   zato DIANA beremo iz angleških novic v zemljevidu strani nato.int (novice o razpisih SPS ne,
+ *   ker razpis SPS pokriva razpisni dokument). POKRITOST JE NEPOPOLNA: za izzive DIANA 2027
+ *   (odprti 2. 6.–3. 7. 2026) nato.int novice ni objavil (izmerjeno 14. 10. 2026), zato tak razpis
+ *   v zajemu manjka. Zagon to javi, kadar v zadnjem letu ni nobene novice o izzivu DIANA.
  *
  * robots.txt nato.int (13. 10. 2026) zapira samo /newsletter/.
  *
@@ -29,7 +32,7 @@ const UA = 'Mozilla/5.0 (razpisnik-portal scraper)';
 
 // Novica o novem razpisu: v poti je program in beseda razpisa ali izziva. Izločimo novice o izbranih
 // projektih, prireditvah in drugih storitvah programa.
-const NOVICA_PROGRAM = /diana|-sps-|science-for-peace/;
+const NOVICA_PROGRAM = /diana/;
 const NOVICA_RAZPIS = /challenge|call-for|new-call|open-call/;
 const NOVICA_NI_RAZPIS = /selects|selected|winners|photo|magazine|demonstrat|rapid-adoption|kicking-off|connects/;
 
@@ -84,7 +87,8 @@ async function razpisiIzNovic(dan) {
     const xml = await (await preberi(ZEMLJEVID)).text();
     const meja = new Date(dan.getTime() - STAROST_DNI * 86400000);
     const novice = [];
-    for (const m of xml.matchAll(/<loc>([^<]*\/news-and-events\/articles\/news\/(\d{4})\/(\d{2})\/(\d{2})\/([^<]+))<\/loc>/g)) {
+    // Samo angleške novice: vsaka je v zemljevidu še enkrat pod /fr/ in bi bila sicer dvakrat.
+    for (const m of xml.matchAll(/<loc>([^<]*\/en\/news-and-events\/articles\/news\/(\d{4})\/(\d{2})\/(\d{2})\/([^<]+))<\/loc>/g)) {
         const [, url, leto, mesec, danMeseca, pot] = m;
         if (new Date(Number(leto), Number(mesec) - 1, Number(danMeseca)) < meja) continue;
         if (!NOVICA_PROGRAM.test(pot) || !NOVICA_RAZPIS.test(pot) || NOVICA_NI_RAZPIS.test(pot)) continue;
@@ -131,7 +135,9 @@ Actor.main(async () => {
     }
     try {
         const novice = await razpisiIzNovic(dan);
-        console.log(`[NATO] novice o razpisih DIANA in SPS (zadnjih ${STAROST_DNI} dni): ${novice.length}`);
+        console.log(`[NATO] novice o izzivih DIANA (zadnjih ${STAROST_DNI} dni): ${novice.length}`);
+        // DIANA objavi izzive enkrat na leto; leto brez novice pomeni, da je nato.int ni objavil, ne da razpisa ni.
+        if (!novice.length) console.error('[NATO] DIANA NI POKRITA — na nato.int v zadnjem letu ni novice o izzivu; preveri diana.nato.int ročno');
         rezultati.push(...novice);
     } catch (e) {
         napak++;

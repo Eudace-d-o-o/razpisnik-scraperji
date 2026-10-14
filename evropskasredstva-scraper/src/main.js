@@ -9,7 +9,17 @@
  * je v class_list (application_status_computed-napovedan | aktualen | zakljucen). Oznaki »aktualen«
  * ne verjamemo na slepo: izmerjeno 13. 10. 2026 je med aktualnimi tudi razpis, ki mu je rok potekel,
  * zato stanje izpeljemo iz roka na strani razpisa (»Veljavno (Od - Do)«), kadar je rok naveden.
- * Zaključenih razpisov ne beremo: za portal ne prinesejo ničesar, kar bi rabil.
+ *
+ * Popravki po nasprotnem pregledu (14. 10. 2026):
+ * - Naslov strani vsebuje stanje (/razpisi/napovedan/… se ob objavi preseli na /razpisi/aktualen/…).
+ *   Kot URL zato zapišemo stalni naslov ?post_type=tender&p=<id>, ki preusmeri na trenutno stran;
+ *   sicer bi ob vsaki spremembi stanja nastal nov zapis, stari pa bi obtičal v starem stanju.
+ * - Zaključene razpise (spremenjene v zadnjih 400 dneh) vrnemo kot »Zaprt« brez branja strani, da
+ *   se razpis, ki smo ga uvozili kot odprtega, ob zaključku pri viru zapre tudi pri nas.
+ * - Napovedi, ki jim je predvideni čas objave minil, izpustimo: stanja ne poznamo, portal pa bi
+ *   razpis brez roka pokazal kot odprtega.
+ * - Isti naziv pod dvema naslovoma (»…/slug/« in »…/slug-2/«) vrnemo enkrat, novejšega.
+ * - Interreg Slovenija–Avstrija, –Hrvaška in –Madžarska izpustimo: pokriva jih vir INTERREG (keep.eu).
  *
  * robots.txt (13. 10. 2026) zapira samo administracijo WordPressa.
  *
@@ -36,13 +46,23 @@ function danes() {
     return new Date(d.getFullYear(), d.getMonth(), d.getDate());
 }
 
-/** »17.11.2023« ali »17. 11. 2023« -> Date; neobstoječ datum -> null. */
+/**
+ * »17.11.2023«, »17. 11. 2023« ali »2025-01-27« -> Date; neobstoječ datum -> null. Vir uporablja oba
+ * zapisa (izmerjeno 14. 10. 2026: 7 razpisov z »2024-06-07 - 2025-01-27«).
+ */
 function datum(niz) {
-    const m = String(niz || '').match(/(\d{1,2})\.\s*(\d{1,2})\.\s*(\d{4})/);
-    if (!m) return null;
-    const d = new Date(Number(m[3]), Number(m[2]) - 1, Number(m[1]));
-    return d.getMonth() === Number(m[2]) - 1 ? d : null;
+    const t = String(niz || '');
+    const iso = t.match(/(\d{4})-(\d{2})-(\d{2})/);
+    const slo = t.match(/(\d{1,2})\.\s*(\d{1,2})\.\s*(\d{4})/);
+    const [leto, mesec, dan] = iso ? [iso[1], iso[2], iso[3]] : slo ? [slo[3], slo[2], slo[1]] : [];
+    if (!leto) return null;
+    const d = new Date(Number(leto), Number(mesec) - 1, Number(dan));
+    return d.getMonth() === Number(mesec) - 1 ? d : null;
 }
+
+// Programi Interreg, ki jih zajema vir INTERREG s keep.eu; tu bi bili dvojniki.
+const POKRIVA_INTERREG = /interreg[\s\S]*slovenij\w*\s*[-–]\s*(avstrij|hrvaš|madžar)/i;
+const DOMENE_INTERREG = new Set(['si-at.eu', 'si-hr.eu', 'si-hu.eu']);
 
 const MESECI = { jan: 1, feb: 2, mar: 3, apr: 4, maj: 5, jun: 6, jul: 7, avg: 8, sep: 9, okt: 10, nov: 11, dec: 12 };
 
@@ -68,17 +88,25 @@ async function preberi(url, accept = 'text/html') {
     return r;
 }
 
-/** Vsi razpisi iz vmesnika, samo napovedani in aktualni. */
-async function razpisiIzVmesnika() {
+/** Vsi razpisi iz vmesnika: napovedani, aktualni in nedavno zaključeni. */
+async function razpisiIzVmesnika(dan) {
     const razpisi = [];
+    const meja = new Date(dan.getTime() - 400 * 86400000);
     for (let stran = 1; stran <= NAJVEC_STRANI; stran++) {
-        const r = await preberi(`${BAZA}/wp-json/wp/v2/tender?per_page=100&page=${stran}&_fields=id,link,title,class_list,date`, 'application/json');
+        const r = await preberi(`${BAZA}/wp-json/wp/v2/tender?per_page=100&page=${stran}&_fields=id,link,title,class_list,date,modified`, 'application/json');
         const vrstice = await r.json();
         for (const v of vrstice) {
             const oznaka = (v.class_list || []).find((c) => c.startsWith('application_status_computed-'));
             const stanje = oznaka ? oznaka.replace('application_status_computed-', '') : null;
-            if (stanje !== 'napovedan' && stanje !== 'aktualen') continue;
-            razpisi.push({ url: v.link, naziv: cheerio.load(v.title?.rendered || '').text(), stanje });
+            if (!['napovedan', 'aktualen', 'zakljucen'].includes(stanje)) continue;
+            if (stanje === 'zakljucen' && new Date(v.modified) < meja) continue;
+            razpisi.push({
+                id: v.id,
+                stran: v.link,
+                url: `${BAZA}/?post_type=tender&p=${v.id}`,
+                naziv: cist(cheerio.load(v.title?.rendered || '').text()),
+                stanje,
+            });
         }
         const vsehStrani = Number(r.headers.get('x-wp-totalpages') || 1);
         if (stran >= vsehStrani) break;
@@ -113,21 +141,16 @@ function razcleni(html, osnova, dan) {
     const letaVNazivu = (naziv.match(/\b20\d\d\b/g) || []).map(Number);
     const nazivJeStar = letaVNazivu.length > 0 && Math.max(...letaVNazivu) < dan.getFullYear();
     let status;
-    let opomba = null;
     if (doDatum && doDatum < dan) {
         status = 'Zaprt';
     } else if (osnova.stanje === 'napovedan') {
-        if ((nacrtovano && nacrtovano < zacetekMeseca) || nazivJeStar) {
-            status = 'Ni razvidno';
-            opomba = 'Vir ga vodi kot napovedanega, a predvideni čas objave je že minil.';
-        } else {
-            status = 'Napovedan';
-        }
+        // Stanja ne poznamo; brez roka bi ga portal pokazal kot odprtega, zato ga ne vrnemo (null).
+        if ((nacrtovano && nacrtovano < zacetekMeseca) || nazivJeStar) return { izpuscen: 'napoved s preteklim časom objave' };
+        status = 'Napovedan';
     } else if (od && od > dan) {
         status = 'Napovedan';
     } else if (!doDatum && nazivJeStar) {
-        status = 'Ni razvidno';
-        opomba = 'Vir ga vodi kot aktualnega, a naziv se nanaša na preteklo leto in rok ni naveden.';
+        return { izpuscen: 'aktualen brez roka, naziv za preteklo leto' };
     } else {
         status = 'Odprt';
     }
@@ -136,17 +159,18 @@ function razcleni(html, osnova, dan) {
     const izvorniUrl = polja['Povezava do strani']?.povezava || null;
     const program = polja['Operativni program']?.besedilo || null;
 
+    let domena = null;
+    try { domena = izvorniUrl ? new URL(izvorniUrl).hostname.replace(/^www\./, '') : null; } catch { /* neveljavna povezava */ }
+    if (domena && DOMENE_INTERREG.has(domena)) return { izpuscen: 'Interreg, pokriva vir INTERREG' };
+
     const deli = [];
-    if (opomba) deli.push(opomba);
     if (program) deli.push(`Program: ${program}`);
-    if (polja['Prispevek EU']) deli.push(`Prispevek EU: ${polja['Prispevek EU'].besedilo}`);
+    // »Prispevek EU« je samo delež EU, ne razpisana sredstva; zato ga ne zapišemo v polje Sredstva.
+    if (polja['Prispevek EU']) deli.push(`Prispevek EU (delež EU, ne celotna razpisana sredstva): ${polja['Prispevek EU'].besedilo}`);
     if (veljavno) deli.push(`Veljavno: ${veljavno}${doDatum ? '' : ' (konec ni naveden)'}`);
     if (polja['Št. uradnega lista']) deli.push(`Objava: ${polja['Št. uradnega lista'].besedilo}`);
     if (besedilo) deli.push(besedilo);
     if (izvorniUrl) deli.push(`Izvirna objava: ${izvorniUrl}`);
-
-    let domena = null;
-    try { domena = izvorniUrl ? new URL(izvorniUrl).hostname.replace(/^www\./, '') : null; } catch { /* neveljavna povezava */ }
 
     return {
         'Naziv razpisa': naziv,
@@ -155,7 +179,7 @@ function razcleni(html, osnova, dan) {
         'Rok prijave': doDatum ? vNiz(doDatum) : null,
         'Datum zaznave': vNiz(dan),
         'Datum objave': datum(polja['Datum objave']?.besedilo) ? vNiz(datum(polja['Datum objave'].besedilo)) : null,
-        'Sredstva': polja['Prispevek EU']?.besedilo || null,
+        'Sredstva': null,
         'Programme': program,
         'Tip financiranja': null,
         'Vsebina': deli.join(' · ').substring(0, NAJVEC_ZNAKOV_VSEBINE),
@@ -166,23 +190,62 @@ function razcleni(html, osnova, dan) {
     };
 }
 
+/** Zaključen razpis: brez branja strani, samo da se pri nas zapre, če smo ga uvozili kot odprtega. */
+function zakljucen(osnova, dan) {
+    return {
+        'Naziv razpisa': osnova.naziv,
+        'URL': osnova.url,
+        'Status': 'Zaprt',
+        'Rok prijave': null,
+        'Datum zaznave': vNiz(dan),
+        'Datum objave': null,
+        'Sredstva': null,
+        'Programme': null,
+        'Tip financiranja': null,
+        'Vsebina': 'Vir razpis vodi kot zaključen.',
+        'Izdajatelj': null,
+        'Izvorna domena': null,
+        'Izvorni URL': null,
+    };
+}
+
+const kljucNaziva = (n) => cist(n).toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]+/g, ' ').trim();
+
 Actor.main(async () => {
     const dan = danes();
-    const razpisi = await razpisiIzVmesnika();
-    if (!razpisi.length) console.error('[EVROPSKASREDSTVA] VMESNIK BREZ NAPOVEDANIH IN AKTUALNIH RAZPISOV — poglej /wp-json/wp/v2/tender');
-    console.log(`[EVROPSKASREDSTVA] napovedanih in aktualnih: ${razpisi.length}`);
+    const vsi = await razpisiIzVmesnika(dan);
+    if (!vsi.length) console.error('[EVROPSKASREDSTVA] VMESNIK BREZ RAZPISOV — poglej /wp-json/wp/v2/tender');
+
+    // Isti naziv pod dvema naslovoma (»…/slug/« in »…/slug-2/«, 14. 10. 2026 sedem parov): novejši (višji id).
+    const poNazivu = new Map();
+    for (const r of vsi) {
+        const k = kljucNaziva(r.naziv);
+        if (!poNazivu.has(k) || r.id > poNazivu.get(k).id) poNazivu.set(k, r);
+    }
+    const izpusceni = {};
+    const izpusti = (razlog) => { izpusceni[razlog] = (izpusceni[razlog] || 0) + 1; };
+    if (vsi.length - poNazivu.size) izpusceni['dvojnik naziva pri viru'] = vsi.length - poNazivu.size;
+    const razpisi = [...poNazivu.values()].filter((r) => {
+        if (POKRIVA_INTERREG.test(r.naziv)) { izpusti('Interreg, pokriva vir INTERREG'); return false; }
+        return true;
+    });
+    const poStanjuVira = {};
+    for (const r of razpisi) poStanjuVira[r.stanje] = (poStanjuVira[r.stanje] || 0) + 1;
+    console.log(`[EVROPSKASREDSTVA] razpisov v vmesniku (napovedani, aktualni, zaključeni v 400 dneh): ${vsi.length}, po stanju vira ${JSON.stringify(poStanjuVira)}`);
 
     const rezultati = [];
     let napak = 0;
-    for (let i = 0; i < razpisi.length; i += HKRATI) {
-        await Promise.all(razpisi.slice(i, i + HKRATI).map(async (r) => {
+    for (const r of razpisi.filter((x) => x.stanje === 'zakljucen')) rezultati.push(zakljucen(r, dan));
+    const zaBranje = razpisi.filter((x) => x.stanje !== 'zakljucen');
+    for (let i = 0; i < zaBranje.length; i += HKRATI) {
+        await Promise.all(zaBranje.slice(i, i + HKRATI).map(async (r) => {
             try {
-                const zapis = razcleni(await (await preberi(r.url)).text(), r, dan);
-                if (zapis) rezultati.push(zapis);
-                else { napak++; console.error(`[EVROPSKASREDSTVA] NERAZČLENJENO: ${r.url}`); }
+                const zapis = razcleni(await (await preberi(r.stran)).text(), r, dan);
+                if (!zapis) { napak++; console.error(`[EVROPSKASREDSTVA] NERAZČLENJENO: ${r.stran}`); } else if (zapis.izpuscen) izpusti(zapis.izpuscen);
+                else rezultati.push(zapis);
             } catch (e) {
                 napak++;
-                console.error(`[EVROPSKASREDSTVA] NAPAKA pri ${r.url}: ${e.message}`);
+                console.error(`[EVROPSKASREDSTVA] NAPAKA pri ${r.stran}: ${e.message}`);
             }
         }));
         await pocakaj(ZAMIK_MS);
@@ -190,7 +253,6 @@ Actor.main(async () => {
 
     const poStanju = {};
     for (const r of rezultati) poStanju[r.Status] = (poStanju[r.Status] || 0) + 1;
-    const aktualniZaprti = rezultati.filter((r) => r.Status === 'Zaprt').length;
-    console.log(`[EVROPSKASREDSTVA] zajetih ${rezultati.length}, po stanju ${JSON.stringify(poStanju)}, »aktualnih« s preteklim rokom ${aktualniZaprti}, napak ${napak}`);
+    console.log(`[EVROPSKASREDSTVA] zajetih ${rezultati.length}, po stanju ${JSON.stringify(poStanju)}, izpuščenih ${JSON.stringify(izpusceni)}, napak ${napak}`);
     if (rezultati.length) await Actor.pushData(rezultati);
 });

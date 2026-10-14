@@ -60,6 +60,10 @@ function datumiIzBesedila(besedilo) {
 // (»opens on 1 September and closes on 17 November 2026« je rok).
 const VZOREC_ROK = /deadline|closes|closing|close on|closed on|end date|until|due|cut-?off|submi\w*[^.]{0,40}\b(by|before)\b|must be submitted|no later than|apply by/g;
 const VZOREC_ODPRTJE = /opens|opening|opened|open on|start date|launch\w*|publication|published|starts/g;
+// Besede za datumi, ki niso rok prijave (rezultati, odločitev, začetek in konec projekta).
+const VZOREC_NI_ROK = /results?|decision|notification|announce\w*|project start|start of (the )?project|selection|evaluation|signature|grant agreement/g;
+// »Projects may run until …«, »project end date …«: trajanje projekta, ne rok.
+const VZOREC_TRAJANJE = /projects? (may |will |must |can )?(run|last|end|be completed|duration)|project end|end of (the )?project|implementation period/;
 // Druga faza dvofaznega razpisa: rok zanjo velja samo za povabljene iz prve faze.
 const VZOREC_DRUGA_FAZA = /full[- ]?proposal|stage 2|second stage|step 2|invited/;
 const VZOREC_PRVA_FAZA = /pre-?proposal|stage 1|first stage|step 1|expression of interest/;
@@ -88,10 +92,17 @@ function rokInStatus(besedilo, dan = danes()) {
     // Faze ločujemo samo, kadar razpis prvo fazo res omenja; sicer je »full proposal deadline« edini rok.
     const imaFaze = VZOREC_PRVA_FAZA.test(t.toLowerCase()) || /invited/.test(t.toLowerCase());
     for (const { datum, indeks } of datumiIzBesedila(t)) {
-        const pred = t.slice(Math.max(0, indeks - 140), indeks).toLowerCase();
+        // Okno pred datumom ne seže čez konec prejšnjega stavka (». «) ali postavke (» · «): sicer
+        // »Deadline: 3 December 2026. Results announced 15 March 2027« da rok 15. 3. 2027.
+        let pred = t.slice(Math.max(0, indeks - 140), indeks).toLowerCase();
+        const konecStavka = Math.max(pred.lastIndexOf('. '), pred.lastIndexOf(' · '), pred.lastIndexOf('; '));
+        if (konecStavka >= 0) pred = pred.slice(konecStavka + 2);
         const kRok = zadnjiZadetek(pred, VZOREC_ROK);
         const kOdprtje = zadnjiZadetek(pred, VZOREC_ODPRTJE);
         if (kRok < 0 && kOdprtje < 0) continue;
+        // Datumi rezultatov, odločitve in trajanja projekta niso rok, tudi če pred njimi stoji »until«.
+        if (zadnjiZadetek(pred, VZOREC_NI_ROK) > Math.max(kRok, kOdprtje)) continue;
+        if (VZOREC_TRAJANJE.test(pred)) continue;
         if (kRok > kOdprtje) {
             // Fazo presodimo po besedilu tik pred ključno besedo in med njo ter datumom.
             const okolica = pred.slice(Math.max(0, kRok - 60));

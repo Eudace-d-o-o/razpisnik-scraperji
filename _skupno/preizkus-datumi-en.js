@@ -8,7 +8,7 @@ const primeri = [
     ['CETP 2026', 'Joint Call 2026 launch event 26 May 2026 Opening for pre-proposal submission (Stage 1) 8 June 2026 14:00 (CEST) See more Joint Call 2026 Q&A Session 9 September 2026 10:00 (CEST) Deadline for pre-proposal submission (Stage 1) 8 October 2026 14:00 (CEST) Opening for full proposal submission (Stage 2) 8 January 2027 14:00 (CET) Deadline for full proposal submission 11 March 2027 14:00 (CET) Funding decision communicated 28 June 2027', '08.10.2026 Zaprt'],
     ['M-ERA.NET 2026', 'resulting in 116 research groups who are invited to submit a full-proposal by 18 November 2026. The M-ERA.NET Call 2026 has been launched on 4 March 2026', 'null Zaprt'],
     ['Biodiversa+', 'Pre-proposal deadline: 10 November 2026 , 12:00 (noon) CET. Full-proposal deadline: 16 April 2027 , 12:00', '10.11.2026 Odprt'],
-    ['Water4All', 'Tentative timeline Call opening: 8 September 2026 Submission deadline of preproposals : 18 November 2026, 15:00 CET Selection of preproposals: Early February 2027 Submission deadline of full proposals: 6 April 2027', '18.11.2026 Odprt'],
+    ['Water4All', 'Tentative timeline Call opening: 8 September 2026 Submission deadline of preproposals : 10 November 2026, 15:00 CET Selection of preproposals: Early February 2027 Submission deadline of full proposals: 6 April 2027', '10.11.2026 Odprt'],
     ['napovedan', 'The call opens on 17 December 2026 and the deadline is 4 March 2027.', '04.03.2027 Napovedan'],
     ['brez roka', 'More news 13 October 2026', 'null Ni razvidno'],
     ['DIANA', 'Innovators will be able to submit proposals to the challenges until 12:00 UTC on Friday 11 July 2025.', '11.07.2025 Zaprt'],
@@ -17,9 +17,18 @@ const primeri = [
     ['neobstoječ', 'Deadline: 31 September 2026', 'null Ni razvidno'],
 ];
 
+// Lažni roki, ki jih je našel nasprotni pregled 14. 10. 2026 (dan 10. 12. 2026): datum rezultatov in
+// trajanja projekta ni rok.
+const dan2 = new Date(2026, 11, 10);
+const primeri2 = [
+    ['rezultati', 'Deadline: 3 December 2026. Results announced 15 March 2027.', '03.12.2026 Zaprt'],
+    ['trajanje', 'Deadline: 3 September 2026. Projects may run until 31 December 2028.', '03.09.2026 Zaprt'],
+    ['konec projekta', 'Submission deadline 1 October 2026. Project end date 30 June 2029', '01.10.2026 Zaprt'],
+];
+
 let napak = 0;
-for (const [ime, besedilo, pricakovano] of primeri) {
-    const r = rokInStatus(besedilo, dan);
+for (const [ime, besedilo, pricakovano, d] of [...primeri, ...primeri2.map((p) => [...p, dan2])]) {
+    const r = rokInStatus(besedilo, d || dan);
     const dobljeno = `${r.rok} ${r.status}`;
     const ok = dobljeno === pricakovano;
     if (!ok) napak++;

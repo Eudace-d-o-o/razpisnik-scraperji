@@ -158,6 +158,12 @@ Actor.main(async () => {
                 const zapis = razcleni(await (await preberi(url)).text(), url, p, leto, dan);
                 // Razpis s strani prihajajočih razpisov brez datumov je napovedan, ne neznan.
                 if (zapis && napovedan && zapis.Status === 'Ni razvidno') zapis.Status = 'Napovedan';
+                // Stran razpisa za prihodnje leto brez datumov (M-ERA.NET 2027: javno posvetovanje o temah)
+                // je napoved. Druge strani brez roka izpustimo: portal bi razpis brez roka pokazal kot odprtega.
+                if (zapis && zapis.Status === 'Ni razvidno') {
+                    if (leto && leto > dan.getFullYear()) zapis.Status = 'Napovedan';
+                    else { console.log(`[PARTNERSTVA] ${p.kratko}: izpuščen, rok ni razviden: ${url}`); await pocakaj(ZAMIK_MS); continue; }
+                }
                 if (zapis) rezultati.push(zapis);
                 else { napak++; console.error(`[PARTNERSTVA] NERAZČLENJENO: ${url}`); }
             } catch (e) {
