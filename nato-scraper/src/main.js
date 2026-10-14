@@ -1,5 +1,5 @@
 /**
- * NATO Science for Peace and Security (SPS) in NATO DIANA — scraper razpisov (Apify actor).
+ * NATO Science for Peace and Security in NATO DIANA — scraper razpisov (Apify actor).
  *
  * Oba programa objavita le nekaj razpisov na leto, zato je zagon majhen (samo raw-http, brez brskalnika):
  *
@@ -61,13 +61,13 @@ async function razpisiSps(dan) {
         const razdelek = besedilo.split(/DEADLINE FOR APPLICATIONS/i).pop();
         const { rok, status } = rokInStatus(razdelek, dan);
         razpisi.push({
-            'Naziv razpisa': `NATO Science for Peace and Security (SPS) Call for Proposals ${krog}`,
+            'Naziv razpisa': `NATO Science for Peace and Security Call for Proposals ${krog}`,
             'URL': url,
             'Status': status,
             'Rok prijave': rok,
             'Datum zaznave': vNiz(dan),
             'Datum objave': null,
-            'Programme': 'NATO Science for Peace and Security (SPS)',
+            'Programme': 'NATO Science for Peace and Security',
             'Tip financiranja': 'Nepovratna sredstva',
             'Sredstva': null,
             'Vsebina': besedilo.substring(0, NAJVEC_ZNAKOV_VSEBINE),
@@ -103,7 +103,7 @@ async function razpisiIzNovic(dan) {
             'Rok prijave': rok,
             'Datum zaznave': vNiz(dan),
             'Datum objave': vNiz(n.objava),
-            'Programme': n.diana ? 'NATO DIANA' : 'NATO Science for Peace and Security (SPS)',
+            'Programme': n.diana ? 'NATO DIANA' : 'NATO Science for Peace and Security',
             'Tip financiranja': 'Nepovratna sredstva',
             'Sredstva': null,
             'Vsebina': opis.substring(0, NAJVEC_ZNAKOV_VSEBINE),
