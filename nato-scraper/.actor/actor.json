@@ -1,0 +1,9 @@
+{
+  "actorSpecification": 1,
+  "name": "nato-scraper",
+  "title": "NATO SPS in DIANA scraper",
+  "description": "Razpisi NATO Science for Peace and Security in izzivi NATO DIANA z nato.int za razpisnik-portal",
+  "version": "1.0",
+  "input": "./input_schema.json",
+  "dockerfile": "../Dockerfile"
+}

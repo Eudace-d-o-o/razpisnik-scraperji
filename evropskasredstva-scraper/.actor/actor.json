@@ -1,0 +1,9 @@
+{
+  "actorSpecification": 1,
+  "name": "evropskasredstva-scraper",
+  "title": "evropskasredstva.si scraper",
+  "description": "Napovedani in aktualni razpisi z evropskasredstva.si (ministrstvo za kohezijo) za razpisnik-portal",
+  "version": "1.0",
+  "input": "./input_schema.json",
+  "dockerfile": "../Dockerfile"
+}

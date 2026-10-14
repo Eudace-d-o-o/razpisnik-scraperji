@@ -1,0 +1,9 @@
+{
+  "actorSpecification": 1,
+  "name": "partnerstva-obzorja-scraper",
+  "title": "Partnerstva Obzorja scraper",
+  "description": "Skupni razpisi partnerstev Obzorja (DUT, Water4All, Biodiversa+, CETPartnership, M-ERA.NET) za razpisnik-portal",
+  "version": "1.0",
+  "input": "./input_schema.json",
+  "dockerfile": "../Dockerfile"
+}

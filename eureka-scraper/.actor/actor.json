@@ -1,0 +1,9 @@
+{
+  "actorSpecification": 1,
+  "name": "eureka-scraper",
+  "title": "EUREKA scraper",
+  "description": "Razpisi EUREKA (Eurostars, grozdi, mrežni projekti, Globalstars, Innowwide) z eurekanetwork.org za razpisnik-portal",
+  "version": "1.0",
+  "input": "./input_schema.json",
+  "dockerfile": "../Dockerfile"
+}

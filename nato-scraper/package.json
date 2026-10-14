@@ -1,0 +1,14 @@
+{
+  "name": "nato-scraper",
+  "version": "1.0.0",
+  "type": "commonjs",
+  "description": "Razpisi NATO Science for Peace and Security in izzivi NATO DIANA z nato.int za razpisnik-portal",
+  "dependencies": {
+    "apify": "^3.2.6",
+    "cheerio": "^1.2.0",
+    "pdf-parse": "^2.4.5"
+  },
+  "scripts": {
+    "start": "node src/main.js"
+  }
+}

@@ -1,0 +1,9 @@
+{
+  "actorSpecification": 1,
+  "name": "interreg-keep-scraper",
+  "title": "Interreg (keep.eu) scraper",
+  "description": "Odprti razpisi programov Interreg z javnih strani keep.eu (Interact) za razpisnik-portal",
+  "version": "1.0",
+  "input": "./input_schema.json",
+  "dockerfile": "../Dockerfile"
+}

@@ -1,0 +1,9 @@
+{
+  "actorSpecification": 1,
+  "name": "eit-scraper",
+  "title": "EIT scraper",
+  "description": "Odprte priložnosti EIT in skupnosti KIC z eit.europa.eu za razpisnik-portal",
+  "version": "1.0",
+  "input": "./input_schema.json",
+  "dockerfile": "../Dockerfile"
+}

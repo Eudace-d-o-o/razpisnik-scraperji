@@ -1,0 +1,13 @@
+{
+  "name": "interreg-keep-scraper",
+  "version": "1.0.0",
+  "type": "commonjs",
+  "description": "Odprti razpisi programov Interreg z javnih strani keep.eu (Interact) za razpisnik-portal",
+  "dependencies": {
+    "apify": "^3.2.6",
+    "cheerio": "^1.2.0"
+  },
+  "scripts": {
+    "start": "node src/main.js"
+  }
+}

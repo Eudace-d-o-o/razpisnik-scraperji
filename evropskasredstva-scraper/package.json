@@ -1,0 +1,13 @@
+{
+  "name": "evropskasredstva-scraper",
+  "version": "1.0.0",
+  "type": "commonjs",
+  "description": "Napovedani in aktualni razpisi z evropskasredstva.si (ministrstvo za kohezijo) za razpisnik-portal",
+  "dependencies": {
+    "apify": "^3.2.6",
+    "cheerio": "^1.2.0"
+  },
+  "scripts": {
+    "start": "node src/main.js"
+  }
+}

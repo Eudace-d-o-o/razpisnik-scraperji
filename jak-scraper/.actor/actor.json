@@ -1,0 +1,9 @@
+{
+  "actorSpecification": 1,
+  "name": "jak-scraper",
+  "title": "JAK scraper",
+  "description": "Javni razpisi in pozivi Javne agencije za knjigo RS (jakrs.si) za razpisnik-portal",
+  "version": "1.0",
+  "input": "./input_schema.json",
+  "dockerfile": "../Dockerfile"
+}
