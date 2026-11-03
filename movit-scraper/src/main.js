@@ -39,8 +39,19 @@ Actor.main(async () => {
     const dan = danes();
     const rezultati = [];
     for (const program of PROGRAMI) {
-        await pocakaj(ZAMIK_MS);
-        const { zapisi, nerazclenjene } = zapisiStrani(await preberi(program.url), program, dan);
+        // Strežnik MOVIT občasno vrne stran brez kartic (3. 11. 2026: 1 od 4 zagonov, naslednji takoj spet v redu),
+        // zato stran brez kartic preberemo do trikrat, preden zagon ustavimo.
+        let zapisi = [];
+        let nerazclenjene = [];
+        for (let poskus = 1; poskus <= 3 && !zapisi.length; poskus++) {
+            await pocakaj(poskus === 1 ? ZAMIK_MS : 5000);
+            const html = await preberi(program.url);
+            ({ zapisi, nerazclenjene } = zapisiStrani(html, program, dan));
+            if (!zapisi.length) {
+                const naslov = (html.match(/<title>([^<]*)/) || [])[1] || '(brez naslova)';
+                console.error(`[MOVIT] ${program.koda}: poskus ${poskus} brez kartic, naslov strani »${naslov}«, ${html.length} znakov`);
+            }
+        }
         // Kartica brez berljivega roka ustavi zagon: tihi izpad enega roka bi bil izgubljen rok, ki ga nihče ne opazi.
         if (nerazclenjene.length) throw new Error(`[MOVIT] ${program.url}: kartice brez roka ali naslova: ${nerazclenjene.join('; ')}`);
         // Stran brez kartic je okvara razčlembe (spremenjena oblika strani), ne leto brez rokov: MOVIT stare
