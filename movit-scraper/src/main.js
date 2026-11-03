@@ -41,7 +41,8 @@ Actor.main(async () => {
     for (const program of PROGRAMI) {
         await pocakaj(ZAMIK_MS);
         const { zapisi, nerazclenjene } = zapisiStrani(await preberi(program.url), program, dan);
-        for (const k of nerazclenjene) console.error(`[MOVIT] ${program.koda}: kartica brez roka ali naslova: ${k}`);
+        // Kartica brez berljivega roka ustavi zagon: tihi izpad enega roka bi bil izgubljen rok, ki ga nihče ne opazi.
+        if (nerazclenjene.length) throw new Error(`[MOVIT] ${program.url}: kartice brez roka ali naslova: ${nerazclenjene.join('; ')}`);
         // Stran brez kartic je okvara razčlembe (spremenjena oblika strani), ne leto brez rokov: MOVIT stare
         // roke pusti na strani, dokler jih ne zamenja z novimi.
         if (!zapisi.length) throw new Error(`[MOVIT] ${program.url}: ni nobene kartice z rokom — poglej obliko strani`);
