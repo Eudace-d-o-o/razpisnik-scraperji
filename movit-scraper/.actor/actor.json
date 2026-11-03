@@ -1,0 +1,9 @@
+{
+  "actorSpecification": 1,
+  "name": "movit-scraper",
+  "title": "MOVIT scraper",
+  "description": "Nacionalni roki programov Erasmus+ Mladina in Evropska solidarnostna enota pri MOVIT za razpisnik-portal",
+  "version": "1.0",
+  "input": "./input_schema.json",
+  "dockerfile": "../Dockerfile"
+}

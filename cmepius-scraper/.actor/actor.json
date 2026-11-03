@@ -1,0 +1,9 @@
+{
+  "actorSpecification": 1,
+  "name": "cmepius-scraper",
+  "title": "CMEPIUS scraper",
+  "description": "Nacionalni roki programa Erasmus+ (izobraževanje, usposabljanje, šport) pri CMEPIUS za razpisnik-portal",
+  "version": "1.0",
+  "input": "./input_schema.json",
+  "dockerfile": "../Dockerfile"
+}

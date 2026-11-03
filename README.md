@@ -27,3 +27,10 @@ Vsak je samostojen actor v svoji podmapi, gradi se iz GitHuba (Base directory = 
 `nato-scraper` (SPS in DIANA; diana.nato.int je zaprt s preverbo Cloudflare, zato prek nato.int).
 Angleški actorji si delijo `src/datumi-en.js`; izvirnik in preverba sta v `_skupno/`
 (`node _skupno/preizkus-datumi-en.js`). Ob popravku popravi vse kopije.
+
+## Nacionalni roki Erasmus+ (3. 11. 2026)
+
+`cmepius-scraper` (Erasmus+ izobraževanje, usposabljanje in šport: KA1, KA2, KA240, akreditacije; letne strani
+»Razpis Erasmus+ <leto>«) in `movit-scraper` (Erasmus+ Mladina in Evropska solidarnostna enota; strani »Prijavni
+roki«). En zapis za vsak ukrep z enim rokom. Razčlemba je v `src/razclemba.js` brez omrežja, da jo je mogoče
+preizkusiti na shranjeni strani. Centralizirane teme Erasmus+ zajema `eu-scraper`.

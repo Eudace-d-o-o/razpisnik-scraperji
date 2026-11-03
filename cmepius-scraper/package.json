@@ -1,0 +1,13 @@
+{
+  "name": "cmepius-scraper",
+  "version": "1.0.0",
+  "type": "commonjs",
+  "description": "Nacionalni roki programa Erasmus+ (izobraževanje, usposabljanje, šport) pri CMEPIUS za razpisnik-portal",
+  "dependencies": {
+    "apify": "^3.2.6",
+    "cheerio": "^1.2.0"
+  },
+  "scripts": {
+    "start": "node src/main.js"
+  }
+}
