@@ -70,6 +70,10 @@ const VSTOPNE_STRANI = [
     { url: `${BAZA}/sl-si/podpore-za-mobilnost/subvencije-za-polnilno-infrastrukturo-izven-omrezja-ten-t`, naziv: 'Subvencije za polnilno infrastrukturo izven omrežja TEN-T' },
     { url: `${BAZA}/sl-si/podpore-za-mobilnost/subvencije-za-tovorni-promet/javni-razpis-zelena-tovorna-logistika`, naziv: 'Javni razpis — Zelena tovorna logistika' },
     { url: `${BAZA}/sl-si/podpore-za-mobilnost/subvencije-za-tovorni-promet/subvencije-za-okolju-prijaznejse-prevoznistvo-2026`, naziv: 'Subvencije za okolju prijaznejše prevozništvo 2026' },
+    // Objavljen 1. 10. 2026 (oddaja vlog od 29. 10. 2026), namenjen izvajalcem cestnega prevoza.
+    // Ker ta vir pozivov na podstrani mobilnosti ne odkriva sam, ga 6. 11. 2026 še ni zajel in
+    // poročilo rutin je Borzen javljalo kot vir brez novih objav (53 dni).
+    { url: `${BAZA}/sl-si/podpore-za-mobilnost/subvencije-za-tovorni-promet/subvencije-za-energijsko-ucinkovite-in-varne-pnevmatike`, naziv: 'Subvencije za energijsko učinkovite in varne pnevmatike' },
     { url: `${BAZA}/sl-si/podpore-za-mobilnost/subvencije-za-okolju-prijaznejse-avtobuse`, naziv: 'Subvencije za okolju prijaznejše avtobuse' },
 ];
 
