@@ -13,10 +13,17 @@ vzdrževan v `src/main.js` (`VSTOPNE_STRANI`). Vstopne strani sta dve vrsti:
 - **kazalo** (`kazalo: true`) — samo našteva povezave do posameznih javnih pozivov. Kazalo
   **ne postane zapis v portalu**; scraper z njega prebere povezave in odpre posamezne pozive.
 
-Kazali sta trenutno dve:
+Kazala (od 6. 11. 2026 zajem bere vse Borzenove sezname pozivov, ne le dveh):
 
+- `/podpore-za-zelene-investicije` (zgornja stran; kazal, ki jih našteje, ne zapiše kot poziv)
 - `/podpore-za-zelene-investicije/nepovratna-sredstva`
 - `/podpore-za-zelene-investicije/subvencije-za-hranilnike-elektricne-energije`
+- `/podpore-za-mobilnost` (vsi odprti, zaprti in zaključeni pozivi za mobilnost)
+- `/podpore-za-mobilnost/subvencije-za-tovorni-promet`
+- `/podpore-za-mobilnost/subvencije-za-nakup-elektricnih-vozil`
+
+Naslov sklopa (odprti / zaključeni) je lahko `h2`–`h6` ali odstavek, ki je v celoti krepak
+(`<p><strong>Zaključeni javni pozivi:</strong></p>`) — tako ga piše stran mobilnosti.
 
 Zajemamo **odprte** pozive. Povezav, ki so na kazalu izrecno označene kot zaključene, ne
 odpiramo (sicer bi vlekli cel Borzenov arhiv). Strani iz `VSTOPNE_STRANI` obdelamo vedno; če je
