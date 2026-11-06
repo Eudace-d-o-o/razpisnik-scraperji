@@ -47,6 +47,15 @@ const BAZA = 'https://borzen.si';
 const NAJVEC_VSEBINA = 12000;
 
 const VSTOPNE_STRANI = [
+    // ── Kazala, s katerih zajem SAM odkriva pozive ───────────────────────────
+    // 6. 11. 2026: zajem je bral samo dve kazali zelenih investicij, strani z vsemi pozivi za
+    // mobilnost pa ne. Poziv za pnevmatike (objavljen 1. 10. 2026) zato 36 dni ni prišel v
+    // portal. Zdaj zajem bere vse Borzenove sezname pozivov; ročni seznam spodaj ostane le
+    // kot rezerva, če bi Borzen poziv odstranil s seznama, preden se zapre.
+    { url: `${BAZA}/sl-si/podpore-za-zelene-investicije`, naziv: 'Podpore za zelene investicije', kazalo: true },
+    { url: `${BAZA}/sl-si/podpore-za-mobilnost`, naziv: 'Podpore za mobilnost', kazalo: true },
+    { url: `${BAZA}/sl-si/podpore-za-mobilnost/subvencije-za-tovorni-promet`, naziv: 'Subvencije za tovorni promet', kazalo: true },
+    { url: `${BAZA}/sl-si/podpore-za-mobilnost/subvencije-za-nakup-elektricnih-vozil`, naziv: 'Subvencije za nakup električnih vozil', kazalo: true },
     // ── Zelene investicije ────────────────────────────────────────────────────
     { url: `${BAZA}/sl-si/podpore-za-zelene-investicije/spodbude-za-elektrointenzivna-podjetja`, naziv: 'Spodbude za elektrointenzivna podjetja' },
     // KAZALO: našteva JP-OVE-05 (odprt) in arhiv JP PS SUB-HEE-PO26, JP REPWR SUB-HEE-PO25,
@@ -58,9 +67,8 @@ const VSTOPNE_STRANI = [
     { url: `${BAZA}/sl-si/podpore-za-zelene-investicije/subvencije-za-hranilnike-elektricne-energije/subvencije-za-hranilnike-elektricne-energije-2026`, naziv: 'JP PS SUB-HEE-PO26 — hranilniki električne energije 2026' },
     { url: `${BAZA}/sl-si/podpore-za-zelene-investicije/subvencije-za-hranilnike-elektricne-energije/subvencije-za-hranilnike-elektricne-energije-za-pravne-osebe`, naziv: 'JP REPWR SUB-HEE-PO25 — hranilniki električne energije za pravne osebe' },
     // ── Mobilnost ─────────────────────────────────────────────────────────────
-    // E-vozila: kazalo `/subvencije-za-nakup-elektricnih-vozil` povezav do pozivov NIMA v
-    // seznamskih elementih (v `li` so samo povezave do statistike oddanih vlog), zato ga NE
-    // beremo kot kazalo — obe strani poziva navedemo neposredno.
+    // E-vozila: kazalo `/subvencije-za-nakup-elektricnih-vozil` 6. 11. 2026 ima odprt poziv v
+    // seznamu, zato ga zdaj beremo kot kazalo (zgoraj). Strani poziva ostaneta tudi tu.
     // Izmerjeno 18. 8. 2026: JP SUB-EV26 je odprt (do porabe sredstev) in izrecno velja tudi za
     // pravne osebe in s.p.; brez tega vnosa ga portal sploh ni zajel.
     { url: `${BAZA}/sl-si/podpore-za-mobilnost/subvencije-za-nakup-elektricnih-vozil/subvencije-za-e-vozila-fizicnih-in-pravnih-oseb-2026`, naziv: 'JP SUB-EV26 — spodbude za električna vozila (fizične in pravne osebe)' },
@@ -70,6 +78,10 @@ const VSTOPNE_STRANI = [
     { url: `${BAZA}/sl-si/podpore-za-mobilnost/subvencije-za-polnilno-infrastrukturo-izven-omrezja-ten-t`, naziv: 'Subvencije za polnilno infrastrukturo izven omrežja TEN-T' },
     { url: `${BAZA}/sl-si/podpore-za-mobilnost/subvencije-za-tovorni-promet/javni-razpis-zelena-tovorna-logistika`, naziv: 'Javni razpis — Zelena tovorna logistika' },
     { url: `${BAZA}/sl-si/podpore-za-mobilnost/subvencije-za-tovorni-promet/subvencije-za-okolju-prijaznejse-prevoznistvo-2026`, naziv: 'Subvencije za okolju prijaznejše prevozništvo 2026' },
+    // Objavljen 1. 10. 2026 (oddaja vlog od 29. 10. 2026), namenjen izvajalcem cestnega prevoza.
+    // Ker ta vir pozivov na podstrani mobilnosti ne odkriva sam, ga 6. 11. 2026 še ni zajel in
+    // poročilo rutin je Borzen javljalo kot vir brez novih objav (53 dni).
+    { url: `${BAZA}/sl-si/podpore-za-mobilnost/subvencije-za-tovorni-promet/subvencije-za-energijsko-ucinkovite-in-varne-pnevmatike`, naziv: 'Subvencije za energijsko učinkovite in varne pnevmatike' },
     { url: `${BAZA}/sl-si/podpore-za-mobilnost/subvencije-za-okolju-prijaznejse-avtobuse`, naziv: 'Subvencije za okolju prijaznejše avtobuse' },
 ];
 
@@ -193,9 +205,16 @@ function vsebinskiDel($) {
 // ─── Kazalo: povezave do posameznih javnih pozivov ───────────────────────────
 
 // Povezave, ki niso javni poziv (seznami prejemnikov, vloge, prijavni portali, dokumenti).
-const NI_POZIV = /seznam-prejemnikov|javni-pozivi-in-razpisi|\/sl-?si\/?$|\.(pdf|docx?|xlsx?|zip)(\?|$)/i;
+// /cdn-cgi/ je Cloudflarov zaščiten e-naslov v kontaktnem bloku vsake strani, /account/ pa prijava
+// v aplikacijo za oddajo vlog (polnilnice2.borzen.si/account/login) — oboje stoji v `li`.
+// subvencije-za-prevoznistvo-v-cestnem-prometu je vmesna stran, ki v besedilu kaže na letne pozive
+// (2024, 2025, 2026); odprti poziv 2026 je naštet tudi neposredno (preverjeno 6. 11. 2026).
+const NI_POZIV = /seznam-prejemnikov|javni-pozivi-in-razpisi|subvencije-za-prevoznistvo-v-cestnem-prometu$|\/cdn-cgi\/|\/account\/|\/sl-?si\/?$|\/sl\/?$|\.(pdf|docx?|xlsx?|zip)(\?|$)/i;
 // Sheme izključno za fizične osebe — ta vir je v portalu namenjen podjetjem.
 const FIZICNE_OSEBE = /fizi[čc]n\w*\s+oseb|gospodinjstv|e-koles|elektri[čc]n\w*\s+koles/i;
+// Poziv za e-vozila na kazalu mobilnosti piše »vlogo za fizične osebe ... vlogo za pravne osebe in
+// s.p.« — velja za oba, zato ga omemba fizičnih oseb ne sme izločiti.
+const ZA_PODJETJA = /pravn\w*\s+oseb|podjet|s\.\s?p\.|gospodarsk\w*\s+dejavnost/i;
 
 /**
  * Prebere kazalo in vrne povezave do posameznih pozivov.
@@ -208,15 +227,28 @@ function povezaveIzKazala($, izvorniUrl) {
     const najdene = [];
     let statusSklopa = null; // status, ki velja za seznam pod zadnjim prebranim naslovom
 
-    vsebinskiDel($).find('h2, h3, h4, h5, h6, li').each((_, el) => {
+    vsebinskiDel($).find('h2, h3, h4, h5, h6, p, li').each((_, el) => {
         const $el = $(el);
         const tag = String(el.tagName || '').toLowerCase();
         const besedilo = cist($el.text());
 
+        if (tag === 'p') {
+            // Stran mobilnosti naslove sklopov piše kot odstavek s krepkim besedilom
+            // (<p><strong>Zaključeni javni pozivi:</strong></p>), ne kot h2–h6. Za naslov štejemo
+            // samo kratek, v celoti krepak odstavek brez povezave, ki govori o pozivih/razpisih in se
+            // konča z dvopičjem — krepka opomba (»Vloge je mogoče oddati do porabe sredstev.«) ne sme
+            // preklopiti sklopa. Odstavek v `li` ni naslov.
+            if ($el.closest('li').length || $el.find('a').length) return;
+            const krepko = cist($el.find('strong, b').text());
+            if (!krepko || krepko.length < besedilo.replace(/[:\s]+$/, '').length - 2 || besedilo.length > 120) return;
+            if (!/poziv|razpis/i.test(besedilo) || !/:\s*$/.test(besedilo)) return;
+        }
+
         if (tag !== 'li') {
-            // Naslov sklopa — nastavi privzeti status za povezave, ki sledijo.
-            if (jeZaprt(besedilo) || /porab\w*\s+sredstev/i.test(besedilo)) statusSklopa = 'Zaprt';
-            else if (/mogo[čc]|odprt|aktualn/i.test(besedilo)) statusSklopa = 'Odprt';
+            // Naslov sklopa — nastavi privzeti status za povezave, ki sledijo. »zaključen« brez »j«,
+            // da »do zaključenja« ne zapre sklopa.
+            if (jeZaprt(besedilo) || /porab\w*\s+sredstev|zaklju[čc]en(?!j)/i.test(besedilo)) statusSklopa = 'Zaprt';
+            else if (/mogo[čc]|mo[žz]n|odprt|aktualn|objavljen/i.test(besedilo)) statusSklopa = 'Odprt';
             return;
         }
 
@@ -230,13 +262,17 @@ function povezaveIzKazala($, izvorniUrl) {
         } catch {
             return;
         }
-        // Ostanemo znotraj Borzena (ove.borzen.si ipd. je še vedno Borzen, tuje domene ne).
-        if (!/(^|\.)borzen\.si$/i.test(new URL(absolutni).hostname)) return;
+        // Poziv je vedno stran na borzen.si pod /sl-si/. Poddomene (ove., polnilnice2., fo5-evozila.)
+        // so aplikacije za oddajo vlog ali statistika, ne pozivi — kazala jih naštevajo v `li`.
+        const naslov = new URL(absolutni);
+        if (!/^(www\.)?borzen\.si$/i.test(naslov.hostname) || !/^\/sl-si\//i.test(naslov.pathname)) return;
         if (NI_POZIV.test(absolutni)) return;
         if (absolutni === normalizirajUrl(izvorniUrl)) return;
 
         const nazivPovezave = cist(a.text());
-        if (FIZICNE_OSEBE.test(nazivPovezave) || FIZICNE_OSEBE.test(besedilo) || /-za-fizicne-osebe/i.test(absolutni)) {
+        const samoFizicne = /-za-fizicne-osebe/i.test(absolutni)
+            || ((FIZICNE_OSEBE.test(nazivPovezave) || FIZICNE_OSEBE.test(besedilo)) && !ZA_PODJETJA.test(besedilo));
+        if (samoFizicne) {
             log.info(`  [kazalo] preskočeno (fizične osebe): ${nazivPovezave}`);
             return;
         }
@@ -291,6 +327,10 @@ function podrobnosti($, url, namigStatusa) {
 
 // ─── Zagon ───────────────────────────────────────────────────────────────────
 
+// Kazalo, ki ga našteje drugo kazalo (zelene investicije → nepovratna sredstva), se ne sme
+// zapisati kot poziv.
+const KAZALA = new Set(VSTOPNE_STRANI.filter((s) => s.kazalo).map((s) => normalizirajUrl(s.url)));
+
 Actor.main(async () => {
     const zaznano = danes();
 
@@ -311,6 +351,7 @@ Actor.main(async () => {
                 log.error(`KAZALO BREZ POVEZAV: ${s.url} — struktura strani se je verjetno spremenila, poglej scraper.`);
             }
             for (const p of povezave) {
+                if (KAZALA.has(p.url)) continue; // kazalo samo po sebi ni poziv
                 if (p.status === 'Zaprt') {
                     // Arhiv namenoma ne odpiramo — zajemamo odprte pozive.
                     log.info(`  [kazalo] preskočen zaključen poziv: ${p.naziv} (${p.url})`);
@@ -339,6 +380,8 @@ Actor.main(async () => {
                 continue;
             }
             obdelani.add(koncniUrl);
+            // Povezava je lahko preusmerjena na kazalo — tudi tedaj kazalo ni poziv.
+            if (KAZALA.has(koncniUrl)) continue;
 
             const d = podrobnosti($, koncniUrl, z.status);
             izhod.push({
