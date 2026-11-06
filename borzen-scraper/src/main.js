@@ -235,15 +235,19 @@ function povezaveIzKazala($, izvorniUrl) {
         if (tag === 'p') {
             // Stran mobilnosti naslove sklopov piše kot odstavek s krepkim besedilom
             // (<p><strong>Zaključeni javni pozivi:</strong></p>), ne kot h2–h6. Za naslov štejemo
-            // samo kratek odstavek brez povezave, ki je v celoti krepak; odstavek v `li` ni naslov.
+            // samo kratek, v celoti krepak odstavek brez povezave, ki govori o pozivih/razpisih in se
+            // konča z dvopičjem — krepka opomba (»Vloge je mogoče oddati do porabe sredstev.«) ne sme
+            // preklopiti sklopa. Odstavek v `li` ni naslov.
             if ($el.closest('li').length || $el.find('a').length) return;
             const krepko = cist($el.find('strong, b').text());
             if (!krepko || krepko.length < besedilo.replace(/[:\s]+$/, '').length - 2 || besedilo.length > 120) return;
+            if (!/poziv|razpis/i.test(besedilo) || !/:\s*$/.test(besedilo)) return;
         }
 
         if (tag !== 'li') {
-            // Naslov sklopa — nastavi privzeti status za povezave, ki sledijo.
-            if (jeZaprt(besedilo) || /porab\w*\s+sredstev|zaklju[čc]en/i.test(besedilo)) statusSklopa = 'Zaprt';
+            // Naslov sklopa — nastavi privzeti status za povezave, ki sledijo. »zaključen« brez »j«,
+            // da »do zaključenja« ne zapre sklopa.
+            if (jeZaprt(besedilo) || /porab\w*\s+sredstev|zaklju[čc]en(?!j)/i.test(besedilo)) statusSklopa = 'Zaprt';
             else if (/mogo[čc]|mo[žz]n|odprt|aktualn|objavljen/i.test(besedilo)) statusSklopa = 'Odprt';
             return;
         }
@@ -258,14 +262,16 @@ function povezaveIzKazala($, izvorniUrl) {
         } catch {
             return;
         }
-        // Ostanemo znotraj Borzena (ove.borzen.si ipd. je še vedno Borzen, tuje domene ne).
-        if (!/(^|\.)borzen\.si$/i.test(new URL(absolutni).hostname)) return;
+        // Poziv je vedno stran na borzen.si pod /sl-si/. Poddomene (ove., polnilnice2., fo5-evozila.)
+        // so aplikacije za oddajo vlog ali statistika, ne pozivi — kazala jih naštevajo v `li`.
+        const naslov = new URL(absolutni);
+        if (!/^(www\.)?borzen\.si$/i.test(naslov.hostname) || !/^\/sl-si\//i.test(naslov.pathname)) return;
         if (NI_POZIV.test(absolutni)) return;
         if (absolutni === normalizirajUrl(izvorniUrl)) return;
 
         const nazivPovezave = cist(a.text());
-        const samoFizicne = (FIZICNE_OSEBE.test(nazivPovezave) || FIZICNE_OSEBE.test(besedilo) || /-za-fizicne-osebe/i.test(absolutni))
-            && !ZA_PODJETJA.test(besedilo);
+        const samoFizicne = /-za-fizicne-osebe/i.test(absolutni)
+            || ((FIZICNE_OSEBE.test(nazivPovezave) || FIZICNE_OSEBE.test(besedilo)) && !ZA_PODJETJA.test(besedilo));
         if (samoFizicne) {
             log.info(`  [kazalo] preskočeno (fizične osebe): ${nazivPovezave}`);
             return;
@@ -374,6 +380,8 @@ Actor.main(async () => {
                 continue;
             }
             obdelani.add(koncniUrl);
+            // Povezava je lahko preusmerjena na kazalo — tudi tedaj kazalo ni poziv.
+            if (KAZALA.has(koncniUrl)) continue;
 
             const d = podrobnosti($, koncniUrl, z.status);
             izhod.push({
