@@ -4,7 +4,7 @@
  * Eurostars, grozdi (ITEA, Celtic-Next, Xecs, SMART, Eurogia), mrežni projekti, Globalstars,
  * Innowwide in Fast Track to the EIC Accelerator. Strani so strežniško izrisane -> fetch + cheerio.
  *
- * Seznam razpisov vzamemo iz zemljevida strani programmes-sitemap.xml (ima datum zadnje spremembe),
+ * Seznam razpisov vzamemo najprej iz zemljevida strani programmes-sitemap.xml (ima datum zadnje spremembe),
  * ne s strani »Open calls«: zemljevid vsebuje tudi napovedane in nedavno zaprte razpise, iz katerih
  * portal ve, da je razpis zaprt. Razpis ima na svoji strani polji »Start Date« in »End Date« ter
  * seznam sodelujočih držav (Slovenija je pri večini).
@@ -49,22 +49,76 @@ async function preberi(url) {
     return r.text();
 }
 
+/** Ali je pot pod PREDPONA stran razpisa (ne pregled programa ali storitev, ki ni razpis). */
+function jeStranRazpisa(url) {
+    if (!url.startsWith(PREDPONA)) return false;
+    const pot = url.slice(PREDPONA.length).replace(/[?#].*$/, '').replace(/\/$/, '');
+    // Prazna pot je pregled vseh programov; ena raven brez razpisa je pregled programa (eurostars/).
+    if (!pot || PROGRAMI[pot] || pot === 'investment-readiness' || pot === 'eureka-clusters') return false;
+    if (/^page\/\d+$/.test(pot)) return false;
+    return !NI_RAZPIS.test(url);
+}
+
 /** Strani razpisov iz zemljevida, spremenjene v zadnjih STAROST_DNI dneh. */
-async function straniRazpisov(dan) {
+async function straniIzZemljevida(dan) {
     const xml = await preberi(ZEMLJEVID);
     const meja = new Date(dan.getTime() - STAROST_DNI * 86400000);
     const strani = [];
     for (const m of xml.matchAll(/<loc>([^<]+)<\/loc>\s*<lastmod>([^<]+)<\/lastmod>/g)) {
         const url = m[1].trim();
-        if (!url.startsWith(PREDPONA)) continue;
-        const pot = url.slice(PREDPONA.length).replace(/\/$/, '');
-        // Prazna pot je pregled vseh programov; ena raven brez razpisa je pregled programa (eurostars/).
-        if (!pot || PROGRAMI[pot] || pot === 'investment-readiness' || pot === 'eureka-clusters') continue;
-        if (NI_RAZPIS.test(url)) continue;
+        if (!jeStranRazpisa(url)) continue;
         if (new Date(m[2]) < meja) continue;
         strani.push(url);
     }
     return strani;
+}
+
+/**
+ * Nadomestna pot, kadar zemljevid odpove ali je prazen (N-1327, 17. 11. 2026: zajem je vrnil 0 zapisov
+ * namesto 46, zemljevid pa samodejnim bralnikom vrača napako 4xx, stran »Programmes and calls« pa se
+ * odpre). Povezave na razpise poberemo s seznama, z njegovih naslednjih strani in s pregledov programov.
+ * Zaprte razpise tako vidimo samo, dokler so na teh straneh; portal jih zapre po roku.
+ */
+async function straniIzSeznamov() {
+    const izhodisca = [PREDPONA, ...Object.keys(PROGRAMI).map((p) => `${PREDPONA}${p}/`)];
+    const obiskane = new Set();
+    const strani = new Set();
+    const vrsta = [...izhodisca];
+    while (vrsta.length && obiskane.size < 30) {
+        const url = vrsta.shift();
+        if (obiskane.has(url)) continue;
+        obiskane.add(url);
+        let html;
+        try { html = await preberi(url); } catch (e) { console.error(`[EUREKA] seznam ${url}: ${e.message}`); continue; }
+        const $ = cheerio.load(html);
+        $('a[href]').each((_, a) => {
+            let cilj;
+            try { cilj = new URL($(a).attr('href'), url); } catch { return; }
+            cilj.hash = '';
+            const naslov = cilj.href;
+            // Naslednje strani seznama (»1 2«): ?page=N, ?paged=N ali /page/N/.
+            if (naslov.startsWith(PREDPONA) && /([?&](page|paged|sf_paged)=\d+|\/page\/\d+\/?$)/.test(naslov)) {
+                if (!obiskane.has(naslov)) vrsta.push(naslov);
+                return;
+            }
+            cilj.search = '';
+            if (jeStranRazpisa(cilj.href)) strani.add(cilj.href.endsWith('/') ? cilj.href : `${cilj.href}/`);
+        });
+        await pocakaj(ZAMIK_MS);
+    }
+    console.log(`[EUREKA] nadomestna pot: ${obiskane.size} strani seznamov, ${strani.size} strani razpisov`);
+    return [...strani];
+}
+
+async function straniRazpisov(dan) {
+    try {
+        const strani = await straniIzZemljevida(dan);
+        if (strani.length) return strani;
+        console.error('[EUREKA] ZEMLJEVID BREZ RAZPISOV — berem seznam razpisov');
+    } catch (e) {
+        console.error(`[EUREKA] ZEMLJEVID NI DOSEGLJIV (${e.message}) — berem seznam razpisov`);
+    }
+    return straniIzSeznamov();
 }
 
 function razcleni(html, url, dan) {
@@ -136,8 +190,8 @@ function razcleni(html, url, dan) {
 Actor.main(async () => {
     const dan = danes();
     const strani = await straniRazpisov(dan);
-    if (!strani.length) console.error('[EUREKA] ZEMLJEVID BREZ RAZPISOV — poglej programmes-sitemap.xml');
-    console.log(`[EUREKA] zemljevid: ${strani.length} strani razpisov`);
+    if (!strani.length) console.error('[EUREKA] NI STRANI RAZPISOV — ne zemljevid ne seznam »Programmes and calls« ne dasta povezav');
+    console.log(`[EUREKA] strani razpisov: ${strani.length}`);
 
     const rezultati = [];
     let napak = 0;
