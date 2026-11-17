@@ -3,8 +3,12 @@
  *
  * Oba programa objavita le nekaj razpisov na leto, zato je zagon majhen (samo raw-http, brez brskalnika):
  *
- * - SPS: stran programa na nato.int povezuje na razpisni dokument (SPS-Call4proposals-<leto>-<krog>.pdf).
+ * - SPS: stran programa na nato.int je povezovala na razpisni dokument (SPS-Call4proposals-<leto>-<krog>.pdf).
  *   Dokument preberemo in rok vzamemo iz razdelka »DEADLINE FOR APPLICATIONS«.
+ *   Izmerjeno 17. 11. 2026: nova stran programa (science-for-peace-and-security-hub) ne povezuje več na
+ *   noben razpisni dokument; prijave tečejo na natosps.grantplatform.com (Good Grants), ki seznam razpisov
+ *   izriše šele z JavaScriptom (HTML vsebuje samo »needs JavaScript to continue«). Brez brskalnika ga ne
+ *   preberemo, zato zagon v tem primeru izrecno javi, da SPS NI POKRIT, namesto da bi molčal z ničlo.
  * - DIANA: diana.nato.int je za samodejno branje zaprta s preverbo Cloudflare (»Just a moment…«,
  *   izmerjeno 13. 10. 2026, tudi zemljevid strani). Te zaščite ne obhajamo. Nove izzive DIANA nato.int
  *   objavi kot novico z rokom v opisu (»submit proposals … until 12:00 UTC on Friday 11 July 2025«),
@@ -126,7 +130,7 @@ Actor.main(async () => {
     try {
         const sps = await razpisiSps(dan);
         // Stran programa ima vedno povezavo na zadnji razpis; brez nje se je stran spremenila.
-        if (!sps.length) console.error('[NATO] STRAN SPS BREZ RAZPISNEGA DOKUMENTA — poglej povezave na strani programa');
+        if (!sps.length) console.error('[NATO] SPS NI POKRIT — stran programa nima razpisnega dokumenta; razpisi so na natosps.grantplatform.com (samo z JavaScriptom), preveri ročno');
         console.log(`[NATO] SPS razpisni dokumenti: ${sps.length}`);
         rezultati.push(...sps);
     } catch (e) {
