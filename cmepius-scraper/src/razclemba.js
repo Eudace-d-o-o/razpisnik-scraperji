@@ -56,6 +56,18 @@ function oznakaIzBesedila(besedilo) {
         .replace(/[^A-Za-z0-9]+/g, '-').replace(/^-|-$/g, '').toUpperCase().substring(0, 80);
 }
 
+/**
+ * Preglednica informativnih dni ali seminarjev, ne rokov: glava omenja seminar, datum in uro ali prijavo
+ * na dogodek, ali pa se prva celica vrstice začne z datumom (pri preglednici rokov je v njej ukrep).
+ */
+function jePreglednicaDogodkov($, tabela) {
+    const vrstice = $(tabela).find('tr').toArray();
+    const glava = cist($(vrstice[0]).text());
+    if (/seminar|datum in ura|informativn|info dan/i.test(glava)) return true;
+    const prve = vrstice.map((tr) => cist($(tr).find('td').first().text())).filter(Boolean);
+    return prve.length > 0 && prve.every((t) => /^\d{1,2}\.\s*(\d{1,2}\.|[a-zčšž]+)\s*\d{4}/i.test(t));
+}
+
 /** Povezave na letne strani razpisa s seznama /razpisi/: [{ leto, url }]. */
 function letneStrani(html, baza) {
     const $ = cheerio.load(html);
@@ -91,7 +103,10 @@ function zapisiLetneStrani(html, { leto, url }, dan) {
 
     const zapisi = [];
     const nerazclenjene = [];
-    $('table tr').each((_, tr) => {
+    // Samo preglednice rokov. Stran 2027 (objavljena 18. 11. 2026) ima pod roki še pet preglednic
+    // informativnih dni (»Datum in ura | Seminar | Prijava«): v drugi celici je ime seminarja, ne rok,
+    // zato je vsaka njihova vrstica veljala za nerazčlenjeno in zagon je padel brez zapisov (N-1327).
+    $('table').filter((_, t) => !jePreglednicaDogodkov($, t)).find('tr').each((_, tr) => {
         const celice = $(tr).find('td');
         if (celice.length < 2) return;
         const ukrep = cist($(celice[0]).text());
@@ -142,4 +157,4 @@ function zapis({ leto, url, ukrep, rok, oznaka, status, objava, dan, vsebina }) 
     };
 }
 
-module.exports = { datum, datumi, letneStrani, zapisiLetneStrani, oznakaIzBesedila };
+module.exports = { datum, datumi, letneStrani, zapisiLetneStrani, oznakaIzBesedila, jePreglednicaDogodkov };
